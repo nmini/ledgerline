@@ -1,0 +1,1905 @@
+<title>Ledgerline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: hero take-home figure leads; a three-column statement (week / fortnight / month) anchors the Overview; each loan gets its own workspace with contract terms, payment log and balance curve */
+:root{
+  --bg:#F1F5F4;--surface:#FFFFFF;--sunk:#E8EEEC;--ink:#10201E;--muted:#586967;--line:#D3DDDA;
+  --accent:#0A6B61;--on-accent:#FFFFFF;--good:#1B7A47;--warn:#9A5A08;--bad:#B0281F;
+  --c-loans:#2a78d6;--c-needs:#eb6834;--c-wants:#1baf7a;--c-save:#eda100;--c-left:#9BAAA7;
+  --f-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --f-body:'Instrument Sans','Segoe UI',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C1413;--surface:#142020;--sunk:#0F1A19;--ink:#E5EFED;--muted:#93A7A4;--line:#243533;
+  --accent:#3FBFAE;--on-accent:#06201C;--good:#5BD08C;--warn:#E3A24A;--bad:#FF7A6E;
+  --c-loans:#3987e5;--c-needs:#d95926;--c-wants:#199e70;--c-save:#c98500;--c-left:#5C6E6B;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0C1413;--surface:#142020;--sunk:#0F1A19;--ink:#E5EFED;--muted:#93A7A4;--line:#243533;
+  --accent:#3FBFAE;--on-accent:#06201C;--good:#5BD08C;--warn:#E3A24A;--bad:#FF7A6E;
+  --c-loans:#3987e5;--c-needs:#d95926;--c-wants:#199e70;--c-save:#c98500;--c-left:#5C6E6B;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.app{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:1.25rem}h3{font-size:1.02rem}
+p{margin:0}
+.num,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}.small{font-size:.82rem}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:1.35rem}
+.brand svg{width:26px;height:26px}
+.seg{display:inline-flex;background:var(--sunk);border-radius:8px;padding:3px;gap:2px}
+.seg button{font:inherit;font-size:.85rem;font-weight:500;border:0;background:transparent;color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.tabs button{font:inherit;font-weight:500;border:0;background:transparent;color:var(--muted);padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{display:flex;flex-direction:column;gap:18px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.banner{background:var(--sunk);border:1px dashed var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.eyebrow{font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.hero{display:flex;flex-direction:column;gap:6px;padding-block:6px}
+.hero .big{font-family:var(--f-display);font-weight:700;font-size:clamp(2.4rem,9vw,3.8rem);line-height:1.05;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);min-width:0}
+.stat .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:1.15rem;font-weight:500;overflow-wrap:anywhere}
+.stat .l{font-size:.78rem;color:var(--muted)}
+.bad{color:var(--bad)}.good{color:var(--good)}.warn{color:var(--warn)}
+.alloc{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--sunk)}
+.alloc span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.84rem}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px}
+.ledger{width:100%;border-collapse:collapse;font-size:.92rem}
+.ledger th,.ledger td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+.ledger th:first-child,.ledger td:first-child{text-align:left}
+.ledger th{font-size:.76rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.ledger td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.ledger tr.total td{font-weight:600;border-top:2px solid var(--ink)}
+.ledger .sel{background:var(--sunk)}
+.scroll{overflow-x:auto;max-width:100%}
+.pill{display:inline-block;font-size:.76rem;font-weight:600;padding:2px 9px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.btn{font:inherit;font-size:.88rem;font-weight:500;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.armed{background:var(--bad);color:#fff;border-color:var(--bad)}
+.btn.tiny{padding:4px 10px;font-size:.8rem}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-items:end;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld>span{font-size:.76rem;color:var(--muted);font-weight:500}
+.fld small{font-size:.74rem;color:var(--muted)}
+input,select,textarea{font:inherit;font-size:.92rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;width:100%;min-width:0}
+input[type=number]{font-family:var(--f-mono)}
+textarea{font-family:var(--f-mono);font-size:.78rem;min-height:110px;resize:vertical}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px}
+.meter{height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
+.meter span{display:block;height:100%;background:var(--accent)}
+.meter.over span{background:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:.88rem;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:6px 12px;border-radius:99px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+details{border-top:1px solid var(--line);padding-top:12px}
+summary{cursor:pointer;font-family:var(--f-display);font-weight:700;font-size:1rem}
+details>.inner{padding-top:12px;display:flex;flex-direction:column;gap:12px}
+.note{border-left:3px solid var(--warn);padding:8px 12px;background:var(--sunk);border-radius:0 8px 8px 0;font-size:.9rem}
+.note.bad{border-left-color:var(--bad);color:var(--ink)}
+.loanrow{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,1fr));gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+@media (max-width:560px){.loanrow{grid-template-columns:1fr 1fr}}
+svg.chart{width:100%;height:auto;display:block}
+.ax{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.gl{stroke:var(--line);stroke-width:1}
+.ln{fill:none;stroke:var(--accent);stroke-width:2.4}
+.ln.proj{stroke-dasharray:5 5;stroke:var(--muted)}
+.ar{fill:var(--accent);opacity:.12}
+.tl{stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3;opacity:.5}
+.incbox{border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.deds{display:flex;flex-direction:column;gap:8px;background:var(--sunk);border-radius:8px;padding:12px}
+.deds input,.deds select{background:var(--surface)}
+.chk{display:flex;align-items:center;gap:8px;font-size:.9rem}
+.chk input{width:auto}
+.hbar{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr) auto;gap:10px;align-items:center;padding:4px 0}
+.hbar .trk{height:10px;background:var(--sunk);border-radius:5px;overflow:hidden}
+.hbar .trk i{display:block;height:100%;border-radius:0 5px 5px 0}
+.hbar .nm{overflow-wrap:anywhere;font-size:.9rem}
+@media (max-width:480px){.hbar{grid-template-columns:1fr auto}.hbar .trk{grid-column:1/-1;order:3}}
+.finding{border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.finding .act{font-size:.9rem}
+.agents{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:18px}
+.chat{display:flex;flex-direction:column;gap:10px}
+.msg{padding:10px 12px;border-radius:10px;max-width:92%;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:var(--sunk)}
+.msg.ai{align-self:flex-start;border:1px solid var(--line)}
+.chat textarea{font-family:var(--f-body);font-size:.92rem;min-height:64px}
+.report{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.report h1{font-size:1.6rem}
+.report h2{font-size:1.1rem;border-bottom:1px solid var(--line);padding-bottom:6px}
+.report h3{font-size:1rem}
+.lg-line{display:inline-block;width:14px;height:0;border-top:2px solid var(--ink);margin-right:6px;vertical-align:middle}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:4px 24px;font-size:.9rem}
+.kv div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:4px 0}
+footer{font-size:.8rem;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.meter span,.alloc span{transition:width .25s}}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"/><path d="M7 9h12M7 13h12M7 17h7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/></svg>
+      Ledgerline
+    </div>
+    <div class="seg" id="viewseg" role="group" aria-label="Budget period"></div>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Sections"></nav>
+  <main id="main"></main>
+  <footer>Figures are estimates built from the terms you enter. Your lender's statement and contract always decide the amount owed. Data stays in this browser; use Setup to back it up. Contract reading and the AI advisers send only what you choose to Claude, on your own account, when you press a button; contract images and text are not kept.</footer>
+</div>
+
+<script>
+//#PURE-START
+const PY={week:52,fortnight:26,month:12,quarter:4,year:1};
+const FREQ_LABEL={week:'Weekly',fortnight:'Fortnightly',month:'Monthly',quarter:'Quarterly',year:'Yearly'};
+const EPS=0.5;
+const num=v=>{const x=parseFloat(v);return Number.isFinite(x)?x:0};
+const round2=x=>Math.round(x*100)/100;
+const parseISO=s=>{const [y,m,d]=String(s).split('-').map(Number);return Math.round(Date.UTC(y,m-1,d)/864e5)};
+const isoOf=d=>new Date(d*864e5).toISOString().slice(0,10);
+function monthsFrom(s,k){const [y,m,d]=s.split('-').map(Number);const t=new Date(Date.UTC(y,m-1+k,1));const yy=t.getUTCFullYear(),mm=t.getUTCMonth();const dim=new Date(Date.UTC(yy,mm+1,0)).getUTCDate();return Math.round(Date.UTC(yy,mm,Math.min(d,dim))/864e5)}
+function dueDay(start,freq,i){
+  if(freq==='week')return parseISO(start)+7*i;
+  if(freq==='fortnight')return parseISO(start)+14*i;
+  return monthsFrom(start,freq==='quarter'?3*i:i);
+}
+function flatTotal(L){return L.method==='flat'?L.principal*(L.rate/100)*(L.term/PY[L.freq]):0}
+function installmentOf(L){
+  if(num(L.installment)>0)return num(L.installment);
+  const n=Math.max(1,L.term|0),P=L.principal;
+  if(L.method==='flat')return round2((P+flatTotal(L))/n);
+  const r=L.rate/100/PY[L.freq];
+  return round2(r===0?P/n:P*r/(1-Math.pow(1+r,-n)));
+}
+const ISO_RE=/^\d{4}-\d{2}-\d{2}$/;
+const dueAt=(L,i)=>ISO_RE.test(L.firstDue||'')?dueDay(L.firstDue,L.freq,i-1):dueDay(L.start,L.freq,i);
+function simulate(L,today,project,extra){
+  if(!(L.principal>0)||!((L.term|0)>0)||!/^\d{4}-\d{2}-\d{2}$/.test(L.start||''))return null;
+  const n=L.term|0,A=installmentOf(L),flat=L.method==='flat',start=parseISO(L.start),fT=flatTotal(L);
+  const ratio=fT/(L.principal+fT);
+  let P=L.principal+fT,I=0,F=0;
+  const r=flat?0:L.rate/100/365;
+  const dues=[];for(let i=1;i<=n;i++)dues.push(dueAt(L,i));
+  const dueSet=new Map(dues.map((d,i)=>[d,i+1]));
+  const lateMap=new Map();dues.forEach((d,i)=>{const k=d+(L.grace|0);lateMap.set(k,(lateMap.get(k)||[]).concat(i+1))});
+  const pays=new Map();
+  const pu=ISO_RE.test(L.paidUpTo||'')?parseISO(L.paidUpTo):null,autoDays=new Set();
+  (L.payments||[]).forEach(p=>{if(!ISO_RE.test(p.date||''))return;const d=parseISO(p.date);if(pu!==null&&d<=pu)return;if(d>=start&&d<=today)pays.set(d,(pays.get(d)||0)+num(p.amount))});
+  if(pu!==null)dues.forEach(d=>{if(d<=pu&&d<=today&&d>start){pays.set(d,(pays.get(d)||0)+A);autoDays.add(d)}});
+  let applied=0,penPaid=0,intRaw=0,paidTotal=0,feeAssessed=0,defAccrued=0,lateCount=0,k=0,day=start,payoff=null;
+  const take=()=>{const sc=Math.min(k,n)*A;const ar=Math.max(0,Math.min(sc-applied,P+I));const j=Math.floor(applied/A+1e-9);const od=(ar>EPS&&j<n)?day-dues[j]:0;
+    return{P,I,F,applied,penPaid,intRaw,paidTotal,feeAssessed,defAccrued,lateCount,arrears:ar>EPS?ar:0,daysOver:od>0?od:0,day}};
+  const series=[{day:start,bal:P}];
+  let snap=today<=start?take():null;
+  const maxDay=start+365*60;
+  while(day<maxDay){
+    day++;
+    if(r>0)I+=P*r;
+    while(k<n&&dues[k]<=day)k++;
+    let pay=pays.get(day)||0;
+    if(autoDays.has(day)&&dueSet.get(day)===n)pay=Math.max(pay,P+I);
+    if(day>today&&project&&dueSet.has(day)&&P+I+F>EPS){
+      const i=dueSet.get(day),owed=P+I+F;
+      const ex=typeof extra==='function'?num(extra(day)):num(extra);
+      pay=i>=n?owed:Math.min(owed,Math.max(A+ex,Math.min(k,n)*A-applied+F));
+    }
+    if(pay>0){
+      paidTotal+=pay;let a=pay;
+      const tf=Math.min(F,a);F-=tf;a-=tf;penPaid+=tf;
+      const ti=Math.min(I,a);I-=ti;a-=ti;intRaw+=ti;
+      const tp=Math.min(P,a);P-=tp;applied+=ti+tp;
+    }
+    const li=lateMap.get(day);
+    if(li)for(const i of li){
+      if(applied<i*A-EPS&&P+I>EPS){const fee=num(L.lateFixed)+num(L.latePct)/100*A;if(fee>0){F+=fee;feeAssessed+=fee;lateCount++}}
+    }
+    const sc=Math.min(k,n)*A,arrears=Math.min(sc-applied,P+I);
+    if(arrears>EPS&&num(L.defaultRate)>0){
+      const j=Math.floor(applied/A+1e-9);
+      if(j<n&&day-dues[j]>num(L.defaultDays)){const pen=arrears*num(L.defaultRate)/100/365;F+=pen;defAccrued+=pen}
+    }
+    if((day-start)%30===0||day===today)series.push({day,bal:P});
+    if(payoff===null&&P+I+F<=EPS){payoff=day;series.push({day,bal:0})}
+    if(day===today)snap=take();
+    if(day>=today&&(!project||payoff!==null))break;
+  }
+  const s=snap||take(),fin=take();
+  const intOf=x=>flat?x.applied*ratio:x.intRaw;
+  const owed=s.P+s.I+s.F;
+  let status='Current';
+  if(today<start)status='Not started';
+  else if(owed<=EPS)status='Paid off';
+  else if(s.daysOver>num(L.defaultDays)&&num(L.defaultRate)>0)status='In default';
+  else if(s.arrears>0)status='Behind';
+  const nextDue=dues.find(d=>d>today);
+  return{A,n,flat,fT,snap:s,fin,owed,status,payoff,series,dues,intPaid:intOf(s),intFinal:intOf(fin),
+    active:today>=start&&owed>EPS,nextDue:nextDue===undefined?null:nextDue,
+    settle:s.P+s.I+s.F+num(L.earlyPct)/100*s.P,
+    contractual:A*n+num(L.upfrontFee)};
+}
+function schedule(L){
+  const n=L.term|0,A=installmentOf(L),flat=L.method==='flat',fT=flatTotal(L);
+  let bal=L.principal+fT;const rows=[];const r=L.rate/100/PY[L.freq];
+  for(let i=1;i<=n;i++){
+    let int,prin,pay=A;
+    if(flat){int=fT/n;prin=A-int;bal=Math.max(0,bal-A)}
+    else{int=bal*r;prin=A-int;if(i===n||prin>bal){prin=bal;pay=prin+int}bal=Math.max(0,bal-prin)}
+    rows.push({i,due:dueAt(L,i),pay,int,prin,bal});
+  }
+  return rows;
+}
+function effectiveAPR(L){
+  const A=installmentOf(L),n=L.term|0,per=PY[L.freq];
+  const net=L.principal-num(L.upfrontFee);
+  if(!(net>0)||!(A>0)||!(n>0))return null;
+  if(A*n<=net)return 0;
+  const f=r=>{let pv=0;for(let i=1;i<=n;i++)pv+=A/Math.pow(1+r,i);return pv-net};
+  let lo=0,hi=1;while(f(hi)>0&&hi<1000)hi*=2;
+  for(let it=0;it<90;it++){const mid=(lo+hi)/2;if(f(mid)>0)lo=mid;else hi=mid}
+  return (Math.pow(1+(lo+hi)/2,per)-1)*100;
+}
+//#PURE-END
+
+/* ---------- state ---------- */
+const KEY='ledgerline.v1';
+const TEMPLATES={
+  single:['Single person',[['Rent or housing','needs','month'],['Utilities','needs','month'],['Groceries','needs','week'],['Transport','needs','week'],['Phone and internet','needs','month'],['Insurance and health','needs','month'],['Eating out','wants','month'],['Entertainment','wants','month'],['Subscriptions','wants','month'],['Personal care','wants','month'],['Savings','savings','month'],['Emergency fund','savings','month']]],
+  couple:['Couple',[['Rent or housing','needs','month'],['Utilities','needs','month'],['Groceries','needs','week'],['Transport','needs','week'],['Phone and internet','needs','month'],['Insurance and health','needs','month'],['Date nights and eating out','wants','month'],['Gifts','wants','month'],['Travel fund','wants','month'],['Savings','savings','month'],['Emergency fund','savings','month']]],
+  family:['Family with children',[['Rent or housing','needs','month'],['Utilities','needs','month'],['Groceries','needs','week'],['Transport and fuel','needs','week'],['School fees','needs','quarter'],['Childcare','needs','week'],['Health','needs','month'],['Phone and internet','needs','month'],['Clothing','wants','month'],['Family outings','wants','month'],['Family and community support','wants','month'],['Savings','savings','month'],['Emergency fund','savings','month']]],
+  extended:['Extended or multi-income household',[['Housing contribution','needs','month'],['Utilities','needs','month'],['Shared food','needs','week'],['Transport','needs','week'],['School fees','needs','quarter'],['Health','needs','month'],['Family and community obligations','wants','month'],['Remittances','wants','month'],['Savings','savings','month'],['Emergency fund','savings','month']]],
+  student:['Student',[['Rent or housing','needs','month'],['Food','needs','week'],['Transport','needs','week'],['Books and fees','needs','quarter'],['Phone and data','needs','month'],['Social and fun','wants','month'],['Savings','savings','month']]],
+  retiree:['Retiree',[['Housing','needs','month'],['Health and medicines','needs','month'],['Groceries','needs','week'],['Utilities','needs','month'],['Transport','needs','week'],['Hobbies','wants','month'],['Gifts and family','wants','month'],['Savings','savings','month']]],
+  freelancer:['Freelancer or irregular income',[['Rent or housing','needs','month'],['Utilities','needs','month'],['Groceries','needs','week'],['Business costs','needs','month'],['Tax set-aside','needs','month'],['Health','needs','month'],['Transport','needs','week'],['Lifestyle','wants','month'],['Income buffer','savings','month'],['Savings','savings','month']]]
+};
+const CURRENCIES=['PGK','AUD','USD','NZD','GBP','EUR','CAD','SGD','JPY','INR','PHP','IDR','FJD','WST','SBD','VUV','ZAR','KES','NGN','GHS','AED','CNY','THB','MYR'];
+const VIEWS=[['week','Weekly'],['fortnight','Fortnightly'],['month','Monthly']];
+const VN={week:'week',fortnight:'fortnight',month:'month'};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const todayDay=()=>{const d=new Date();return Math.round(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/864e5)};
+const TODAY=todayDay();
+
+function newLoan(p){return Object.assign({id:uid(),name:'New loan',lender:'',principal:10000,rate:10,method:'reducing',term:24,freq:'month',start:isoOf(TODAY),installment:0,upfrontFee:0,lateFixed:0,latePct:0,grace:0,defaultDays:30,defaultRate:0,earlyPct:0,firstDue:'',settleDays:0,paidUpTo:'',statBal:0,statDate:'',payments:[]},p||{})}
+function sample(){
+  const car=newLoan({name:'Car loan',lender:'Example Finance',principal:45000,rate:12,term:60,start:isoOf(monthsFrom(isoOf(TODAY),-9)),upfrontFee:450,lateFixed:50,latePct:2,grace:5,defaultDays:30,defaultRate:5,earlyPct:2});
+  const A=installmentOf(car);
+  car.payments=[1,2,3,4,5,6].map(i=>({id:uid(),date:isoOf(dueDay(car.start,'month',i)),amount:A}));
+  const pl=newLoan({name:'Personal loan',lender:'Example Credit Union',principal:6000,rate:15,method:'flat',term:12,start:isoOf(monthsFrom(isoOf(TODAY),-5)),upfrontFee:60,lateFixed:25,grace:3,defaultDays:30,defaultRate:3});
+  const B=installmentOf(pl);
+  pl.payments=[1,2,3,4,5].map(i=>({id:uid(),date:isoOf(dueDay(pl.start,'month',i)),amount:B}));
+  const prop=newLoan({name:'Property loan',lender:'Example Bank',principal:250000,rate:7.5,term:240,start:isoOf(monthsFrom(isoOf(TODAY),-14)),upfrontFee:2500,lateFixed:100,latePct:2,grace:7,defaultDays:60,defaultRate:4,earlyPct:1});
+  const C2=installmentOf(prop);
+  prop.payments=Array.from({length:14},(_,i)=>({id:uid(),date:isoOf(dueDay(prop.start,'month',i+1)),amount:C2}));
+  const ex=(name,amount,freq,bucket,spent)=>({id:uid(),name,amount,freq,bucket,spent});
+  return{v:1,example:true,
+    settings:{currency:'PGK',view:'fortnight',profile:'family',household:4,needsPct:50,wantsPct:30,savePct:20},
+    income:[
+      {id:uid(),name:'Main salary',type:'salary',gross:4200,freq:'fortnight',rel:100,deductions:[
+        {id:uid(),kind:'Income tax (PAYE)',mode:'amt',value:720,freq:'fortnight'},
+        {id:uid(),kind:'Pension or superannuation',mode:'pct',value:4,freq:'fortnight'},
+        {id:uid(),kind:'Union or professional fees',mode:'amt',value:12,freq:'fortnight'}]},
+      {id:uid(),name:'Rental property',type:'property',gross:1500,freq:'month',rel:85,deductions:[
+        {id:uid(),kind:'Property management fees',mode:'pct',value:8,freq:'month'},
+        {id:uid(),kind:'Repairs and maintenance',mode:'amt',value:120,freq:'month'},
+        {id:uid(),kind:'Rates, land tax or levies',mode:'amt',value:1200,freq:'year'}]},
+      {id:uid(),name:'Side business',type:'business',gross:800,freq:'month',rel:70,deductions:[
+        {id:uid(),kind:'Business running costs',mode:'amt',value:120,freq:'month'}]}],
+    expenses:[
+      ex('Rent or housing',1800,'month','needs',0),ex('Utilities',350,'month','needs',0),
+      ex('Groceries',300,'week','needs',420),ex('Transport and fuel',100,'week','needs',90),
+      ex('School fees',1500,'quarter','needs',0),ex('Phone and internet',140,'month','needs',0),
+      ex('Health',120,'month','needs',0),ex('Family and community support',300,'month','wants',150),
+      ex('Eating out',200,'month','wants',60),ex('Entertainment',150,'month','wants',0),
+      ex('Emergency savings',500,'month','savings',0)],
+    goals:[{id:uid(),name:'School fees',kind:'school',target:3000,date:isoOf(monthsFrom(isoOf(TODAY),4)),opening:600,plan:500,freq:'month',inBudget:false,contribs:[]},{id:uid(),name:'Family trip',kind:'trip',target:4000,date:isoOf(monthsFrom(isoOf(TODAY),10)),opening:0,plan:200,freq:'fortnight',inBudget:false,contribs:[]}],
+    loans:[car,pl,prop]};
+}
+function normState(o){
+  o.settings=o.settings||{};o.ai=o.ai||{};if(!Array.isArray(o.log))o.log=[];if(!Array.isArray(o.goals))o.goals=[];
+  (o.income||[]).forEach(i=>{
+    if(['salary','property','business','other'].indexOf(i.type)<0)i.type='salary';
+    if(!PY[i.freq])i.freq=normFreq(i.freq)||'month';
+    i.gross=num(i.gross);if(i.rel==null||!Number.isFinite(+i.rel))i.rel=100;
+    if(!Array.isArray(i.records))i.records=[];
+    (i.deductions||[]).forEach(d=>{if(!PY[d.freq])d.freq=i.freq;if(d.mode!=='pct')d.mode='amt';d.value=num(d.value);if(!d.id)d.id=uid();if(!d.kind)d.kind='Other deduction'});
+    if(!Array.isArray(i.deductions)){i.deductions=[];if(num(i.deduct)>0)i.deductions.push({id:uid(),kind:'Tax and other deductions',mode:'amt',value:num(i.deduct),freq:i.freq})}
+  });
+  return o;
+}
+function load(){try{const s=localStorage.getItem(KEY);if(s){const o=JSON.parse(s);if(o&&o.v===1)return normState(o)}}catch(e){}return normState(sample())}
+let S=load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+/* ---------- formatting ---------- */
+let nf2,nf0,nfc;
+function setFmt(){
+  const st=S.settings,c=String(st.currency||'USD').toUpperCase(),loc=st.numLoc||'en',disp=st.curDisp||'narrowSymbol',dec=st.decimals||'auto';
+  const o2={style:'currency',currency:c,currencyDisplay:disp},o0={style:'currency',currency:c,currencyDisplay:disp,minimumFractionDigits:0,maximumFractionDigits:0};
+  if(dec==='0'||dec==='2'){o2.minimumFractionDigits=o2.maximumFractionDigits=+dec}
+  try{nf2=new Intl.NumberFormat(loc,o2);nf0=new Intl.NumberFormat(loc,o0)}
+  catch(e){
+    const a=new Intl.NumberFormat('en',{minimumFractionDigits:2,maximumFractionDigits:2}),b=new Intl.NumberFormat('en',{maximumFractionDigits:0});
+    nf2={format:n=>c+' '+a.format(n)};nf0={format:n=>c+' '+b.format(n)};
+  }
+  try{nfc=new Intl.NumberFormat(loc,{notation:'compact',maximumFractionDigits:1})}catch(e){nfc=new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1})}
+}
+const z=n=>Math.abs(n)<0.005?0:n;
+const m2=n=>nf2.format(z(n)),m0=n=>nf0.format(Math.abs(n)<0.5?0:n);
+const dShort=d=>{const f=S.settings.dateFmt;if(f==='iso')return isoOf(d);return new Date(d*864e5).toLocaleDateString(f==='mdy'?'en-US':'en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct=n=>(Math.round(n*10)/10)+'%';
+
+/* ---------- derived numbers ---------- */
+let SIMS=[];
+function buildSims(){SIMS=S.loans.map(L=>({L,sim:simulate(L,TODAY,true)}))}
+function conv(a,fr,view){return a*PY[fr]/PY[view]}
+const INCOME_TYPES=[['salary','Salary or wages'],['property','Property or rental income'],['business','Business or self-employment'],['other','Other (allowance, support, investments)']];
+const DED_KINDS={
+  salary:['Income tax (PAYE)','Pension or superannuation','Health insurance','Union or professional fees','Salary-deducted loan repayment','Other deduction'],
+  property:['Property management fees','Repairs and maintenance','Rates, land tax or levies','Property insurance','Vacancy allowance','Income tax on rent','Other deduction'],
+  business:['Business running costs','Income tax','Superannuation or contributions','Other deduction'],
+  other:['Tax','Other deduction']
+};
+const DED_HINT={salary:'If a loan is repaid straight from your pay, record it here or in Loans, not both.',property:'If the property mortgage is in Loans, leave its interest out here.',business:'Enter costs that come out before you can spend the money.',other:'Enter anything taken off before the money reaches you.'};
+const loanLinked=d=>!!(d.loanId&&S.loans.some(l=>l.id===d.loanId));
+function incomeDeduct(i){
+  const g=num(i.gross);
+  return (i.deductions||[]).filter(d=>!loanLinked(d)).reduce((t,d)=>t+(d.mode==='pct'?g*num(d.value)/100:conv(num(d.value),d.freq||i.freq,i.freq)),0);
+}
+const incomeNet=i=>num(i.gross)-incomeDeduct(i);
+function calc(view){
+  let gross=0,net=0,plan=0;
+  S.income.forEach(i=>{const g=conv(num(i.gross),i.freq,view),n=conv(incomeNet(i),i.freq,view);gross+=g;net+=n;plan+=n*(num(i.rel??100)/100)});
+  let loanPay=0;SIMS.forEach(({L,sim})=>{if(sim&&sim.active)loanPay+=conv(sim.A,L.freq,view);else if(!sim&&L.salaryFrom&&num(L.installment)>0)loanPay+=conv(num(L.installment),L.freq,view)});
+  const b={needs:0,wants:0,savings:0};
+  S.expenses.forEach(e=>{b[e.bucket]+=conv(num(e.amount),e.freq,view)});
+  (S.goals||[]).forEach(g=>{if(g.inBudget!==false&&PY[g.freq])b.savings+=conv(num(g.plan),g.freq,view)});
+  const planned=b.needs+b.wants+b.savings;
+  return{gross,net,takeHome:plan,loanPay,home:plan-loanPay,needs:b.needs,wants:b.wants,savings:b.savings,planned,left:plan-loanPay-planned};
+}
+
+/* ---------- charts ---------- */
+function chartSVG(pts,today){
+  if(pts.length<2)return '';
+  const W=640,H=210,Lm=58,Rm=14,Tm=12,Bm=26;
+  const x0=pts[0].day,x1=pts[pts.length-1].day,ymax=Math.max.apply(null,pts.map(p=>p.bal))||1;
+  const X=d=>Lm+(d-x0)/((x1-x0)||1)*(W-Lm-Rm),Y=v=>Tm+(1-v/ymax)*(H-Tm-Bm);
+  const path=a=>a.map((p,i)=>(i?'L':'M')+X(p.day).toFixed(1)+' '+Y(p.bal).toFixed(1)).join(' ');
+  const past=pts.filter(p=>p.day<=today),fut=pts.filter(p=>p.day>=today);
+  let s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Loan balance over time">';
+  [0,.5,1].forEach(f=>{const y=Y(ymax*f);s+='<line class="gl" x1="'+Lm+'" x2="'+(W-Rm)+'" y1="'+y+'" y2="'+y+'"/><text class="ax" x="'+(Lm-6)+'" y="'+(y+4)+'" text-anchor="end">'+nfc.format(ymax*f)+'</text>'});
+  if(past.length>1)s+='<path class="ar" d="'+path(past)+' L'+X(past[past.length-1].day)+' '+Y(0)+' L'+X(past[0].day)+' '+Y(0)+' Z"/><path class="ln" d="'+path(past)+'"/>';
+  if(fut.length>1)s+='<path class="ln proj" d="'+path(fut)+'"/>';
+  if(today>x0&&today<x1)s+='<line class="tl" x1="'+X(today)+'" x2="'+X(today)+'" y1="'+Tm+'" y2="'+(H-Bm)+'"/><text class="ax" x="'+X(today)+'" y="'+(H-8)+'" text-anchor="middle">Today</text>';
+  const lab=d=>new Date(d*864e5).toLocaleDateString('en',{month:'short',year:'2-digit',timeZone:'UTC'});
+  s+='<text class="ax" x="'+Lm+'" y="'+(H-8)+'" text-anchor="start">'+lab(x0)+'</text><text class="ax" x="'+(W-Rm)+'" y="'+(H-8)+'" text-anchor="end">'+lab(x1)+'</text></svg>';
+  return s;
+}
+function stepVal(series,d){let v=0,first=series[0].day;if(d<first)return 0;for(const p of series){if(p.day<=d)v=p.bal;else break}return v}
+function combinedPts(){
+  const act=SIMS.filter(x=>x.sim&&x.sim.fin.P+x.sim.fin.I>=0&&x.sim.snap);
+  if(!act.length)return [];
+  const from=Math.min.apply(null,act.map(x=>x.sim.series[0].day));
+  const to=Math.min(Math.max.apply(null,act.map(x=>x.sim.payoff||TODAY+365*5)),TODAY+365*40);
+  const days=[];for(let d=from;d<=to;d+=30)days.push(d);
+  if(TODAY>from&&TODAY<to)days.push(TODAY);
+  days.sort((a,b)=>a-b);
+  return days.map(d=>({day:d,bal:act.reduce((t,x)=>t+stepVal(x.sim.series,d),0)}));
+}
+function loanPts(sim){
+  const cap=sim.payoff||TODAY+365*5;
+  return sim.series.filter(p=>p.day<=cap);
+}
+
+/* ---------- ui state ---------- */
+const TAB_IDS=['overview','dashboard','income','spending','savings','loans','advisor','records','reports','setup'];
+let tab=(location.hash||'#overview').slice(1);
+if(TAB_IDS.indexOf(tab)<0)tab='overview';
+let loanSel=null,armed=null;
+const userOpen=new Set(),userClosed=new Set();
+const isOpen=(key,def)=>userOpen.has(key)||(def&&!userClosed.has(key));
+
+function fld(label,coll,id,f,val,o){
+  o=o||{};const t=o.t||(o.opts?'text':'num'),fid='f-'+coll+'-'+id+(o.did?'-'+o.did:'')+'-'+f;
+  const at=' id="'+fid+'" data-coll="'+coll+'" data-id="'+id+'" data-f="'+f+'" data-t="'+t+'"'+(o.did?' data-did="'+o.did+'"':'');
+  let inner;
+  if(o.opts)inner='<select'+at+'>'+o.opts.map(x=>'<option value="'+x[0]+'"'+(String(x[0])===String(val)?' selected':'')+'>'+esc(x[1])+'</option>').join('')+'</select>';
+  else if(t==='num')inner='<input'+at+' type="number" inputmode="decimal" step="any" min="0" value="'+(o.blank0&&!val?'':esc(val))+'"'+(o.ph?' placeholder="'+esc(o.ph)+'"':'')+'>';
+  else if(t==='date')inner='<input'+at+' type="date" value="'+esc(val)+'">';
+  else inner='<input'+at+' type="text" value="'+esc(val)+'"'+(o.ph?' placeholder="'+esc(o.ph)+'"':'')+'>';
+  return '<label class="fld"><span>'+esc(label)+'</span>'+inner+(o.hint?'<small>'+o.hint+'</small>':'')+'</label>';
+}
+const FREQ_OPTS=['week','fortnight','month','quarter','year'].map(k=>[k,FREQ_LABEL[k]]);
+const LOAN_FREQ_OPTS=['week','fortnight','month','quarter'].map(k=>[k,FREQ_LABEL[k]]);
+const BUCKET_OPTS=[['needs','Need'],['wants','Want'],['savings','Saving']];
+const status_cls=s=>s==='In default'?'bad':s==='Behind'?'warn':s==='Paid off'?'good':'muted';
+
+/* ---------- renderers ---------- */
+function renderOverview(){
+  const v=S.settings.view,vn=VN[v],C=calc(v);
+  const th=C.takeHome;
+  let h='';
+  if(S.example)h+='<div class="banner"><span class="small"><b>Example figures.</b> Replace them with your own, or clear everything and start fresh.</span><button class="btn tiny" data-act="clear-examples">Clear examples</button></div>';
+  h+='<section class="hero"><p class="eyebrow">Home budget each '+vn+'</p><div class="big'+(C.home<0?' bad':'')+'">'+m0(C.home)+'</div><p class="muted">'+m0(th)+' take-home, less '+m0(C.loanPay)+' in loan repayments.'+(S.settings.household>1?' About '+m0(C.home/S.settings.household)+' per person across '+S.settings.household+' people.':'')+'</p></section>';
+  h+='<section class="stats">'
+    +'<div class="stat"><span class="l">Take-home to plan on</span><span class="v">'+m0(th)+'</span></div>'
+    +'<div class="stat"><span class="l">Loan repayments</span><span class="v">'+m0(C.loanPay)+'</span></div>'
+    +'<div class="stat"><span class="l">Planned spending</span><span class="v">'+m0(C.planned)+'</span></div>'
+    +'<div class="stat"><span class="l">'+(C.left<0?'Over budget by':'Left unallocated')+'</span><span class="v '+(C.left<0?'bad':'good')+'">'+m0(Math.abs(C.left))+'</span></div></section>';
+  const total=Math.max(th,C.loanPay+C.planned)||1;
+  const seg=[['Loans',C.loanPay,'--c-loans'],['Needs',C.needs,'--c-needs'],['Wants',C.wants,'--c-wants'],['Savings',C.savings,'--c-save'],['Left',Math.max(0,C.left),'--c-left']];
+  h+='<section class="card"><div class="card-head"><h2>Where each '+vn+' goes</h2><span class="small muted">Take-home '+m0(th)+'</span></div><div class="alloc" role="img" aria-label="Budget allocation">'
+    +seg.map(s=>'<span style="width:'+(s[1]/total*100).toFixed(2)+'%;background:var('+s[2]+')"></span>').join('')+'</div><div class="legend">'
+    +seg.map(s=>'<span><i style="background:var('+s[2]+')"></i>'+s[0]+' '+m0(s[1])+'</span>').join('')+'</div>';
+  const st=S.settings,rule=[['Needs and loans',C.needs+C.loanPay,st.needsPct,true],['Wants',C.wants,st.wantsPct,true],['Savings',C.savings,st.savePct,false]];
+  h+='<div class="fields">'+rule.map(r=>{const share=th>0?r[1]/th*100:0;const bad=r[3]?share>r[2]:share<r[2];
+    return '<div class="fld"><span>'+r[0]+': '+pct(share)+' of take-home (target '+r[2]+'%)</span><div class="meter'+(bad&&r[3]?' over':'')+'"><span style="width:'+Math.min(100,share/(r[2]||1)*50)+'%"></span></div><small class="'+(bad?'warn':'good')+'">'+(r[3]?(bad?'Above target':'Within target'):(bad?'Below target':'On or above target'))+'</small></div>'}).join('')+'</div></section>';
+  const live=SIMS.filter(x=>x.sim);
+  const owed=live.reduce((t,x)=>t+x.sim.owed,0),arrears=live.reduce((t,x)=>t+x.sim.snap.arrears,0),pen=live.reduce((t,x)=>t+x.sim.snap.F,0);
+  const lastPay=live.length&&live.every(x=>x.sim.payoff)?Math.max.apply(null,live.map(x=>x.sim.payoff)):null;
+  const remInt=live.reduce((t,x)=>t+Math.max(0,x.sim.intFinal-x.sim.intPaid),0);
+  h+='<section class="card"><div class="card-head"><h2>Debt position</h2><button class="btn tiny" data-act="tab:loans">Open loans</button></div>';
+  if(!live.length)h+='<p class="muted">No loans recorded. Add a loan with its contract terms to see balances, penalties and the payoff date.</p>';
+  else{
+    h+='<div class="stats"><div class="stat"><span class="l">Total owed today</span><span class="v">'+m0(owed)+'</span></div>'
+      +'<div class="stat"><span class="l">Arrears</span><span class="v '+(arrears>0?'bad':'')+'">'+m0(arrears)+'</span></div>'
+      +'<div class="stat"><span class="l">Penalties and fees owed</span><span class="v '+(pen>0?'warn':'')+'">'+m0(pen)+'</span></div>'
+      +'<div class="stat"><span class="l">Debt-free date</span><span class="v">'+(lastPay?dShort(lastPay):'Not reached')+'</span></div>'
+      +'<div class="stat"><span class="l">Interest still to pay</span><span class="v">'+m0(remInt)+'</span></div></div>';
+    h+=chartSVG(combinedPts(),TODAY);
+    h+='<div>'+live.map(x=>{const s=x.sim;return '<div class="loanrow"><div><b>'+esc(x.L.name)+'</b><div class="small muted">'+esc(x.L.lender||'')+'</div></div><div><div class="small muted">Owed today</div><span class="num">'+m2(s.owed)+'</span></div><div><div class="small muted">Instalment</div><span class="num">'+m2(s.A)+'</span> <span class="small muted">'+FREQ_LABEL[x.L.freq].toLowerCase()+'</span></div><div><span class="pill '+status_cls(s.status)+'">'+s.status+'</span></div></div>'}).join('')+'</div>';
+    const bad=live.filter(x=>x.sim.snap.arrears>0);
+    bad.forEach(x=>{const s=x.sim.snap;h+='<div class="note'+(x.sim.status==='In default'?' bad':'')+'"><b>'+esc(x.L.name)+'</b> is '+s.daysOver+' days behind. Arrears '+m2(s.arrears)+' plus '+m2(s.F)+' in penalties and fees. Paying '+m2(s.arrears+s.F)+' clears it.</div>'});
+  }
+  h+='</section>';
+  h+='<section class="card"><h2>Budget statement</h2><p class="small muted">Every line converts at 52 weeks, 26 fortnights or 12 months a year, so pay and bills match whichever period you choose.</p><div class="scroll"><table class="ledger"><thead><tr><th></th>'
+    +VIEWS.map(x=>'<th class="'+(x[0]===v?'sel':'')+'">'+x[1]+'</th>').join('')+'</tr></thead><tbody>';
+  const cs=VIEWS.map(x=>calc(x[0]));
+  const line=(lab,key,cls,sign)=>'<tr class="'+(cls||'')+'"><td>'+lab+'</td>'+cs.map((c,i)=>'<td class="num '+(VIEWS[i][0]===v?'sel':'')+'">'+(sign||'')+m2(c[key])+'</td>').join('')+'</tr>';
+  h+=line('Take-home','takeHome')+line('Loan repayments','loanPay','','−')+line('Home budget','home','total')+line('Needs','needs','','−')+line('Wants','wants','','−')+line('Savings','savings','','−')+line('Left unallocated','left','total')+'</tbody></table></div></section>';
+  return h;
+}
+function renderIncome(){
+  const v=S.settings.view,C=calc(v);
+  let h=renderIncomeUpload()+'<section class="card"><div class="card-head"><h2>Income</h2><button class="btn primary tiny" data-act="add-income">Add income</button></div><p class="small muted">Enter each income before anything is taken off, choose its type, then add the deductions that fit it, as a fixed amount or a percentage. Set reliability below 100% for money that varies, such as rent with vacancies or commissions, and the budget counts only that share.</p>';
+  if(!S.income.length)h+='<p class="muted">No income yet. Add your salary, wages, business income, allowances or support payments.</p>';
+  S.income.forEach(i=>{
+    const net=incomeNet(i),ded=incomeDeduct(i),kinds=DED_KINDS[i.type]||DED_KINDS.other;
+    const per=FREQ_LABEL[i.freq].toLowerCase().replace('ly','');
+    h+='<div class="incbox"><div class="row">'+fld('Source','income',i.id,'name',i.name,{t:'text'})
+      +fld('Type of income','income',i.id,'type',i.type,{t:'text',opts:INCOME_TYPES})
+      +fld('Amount before deductions','income',i.id,'gross',i.gross)+fld('How often','income',i.id,'freq',i.freq,{t:'text',opts:FREQ_OPTS})
+      +fld('Reliability %','income',i.id,'rel',i.rel??100)
+      +'<button class="btn tiny danger" data-act="del-income:'+i.id+'">Remove</button></div>';
+    h+='<div class="deds"><div class="card-head"><h3>Deductions</h3><span class="small muted">'+esc(DED_HINT[i.type]||DED_HINT.other)+'</span></div>';
+    (i.deductions||[]).forEach(d=>{
+      const opts=kinds.indexOf(d.kind)>=0?kinds:kinds.concat([d.kind]);
+      h+='<div class="row">'+fld('What is taken off','ded',i.id,'kind',d.kind,{t:'text',opts:opts.map(k=>[k,k]),did:d.id})
+        +fld('Entered as','ded',i.id,'mode',d.mode,{t:'text',opts:[['amt','Fixed amount'],['pct','% of amount before deductions']],did:d.id})
+        +fld(d.mode==='pct'?'Percent':'Amount','ded',i.id,'value',d.value,{did:d.id})
+        +(d.mode==='pct'?'<div class="fld"><span>Works out to</span><b class="num">'+m2(num(i.gross)*num(d.value)/100)+'</b></div>':fld('How often','ded',i.id,'freq',d.freq||i.freq,{t:'text',opts:FREQ_OPTS,did:d.id}))
+        +(loanLinked(d)?'<div class="fld"><span>Loan repayment</span><b>Counted in Loans: '+esc((S.loans.find(l=>l.id===d.loanId)||{}).name)+'</b></div>':'')
+        +'<button class="btn tiny danger" data-act="del-ded:'+i.id+':'+d.id+'">Remove</button></div>';
+    });
+    h+='<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div>'
+      +'<div class="kv"><div><span>Total deductions per '+per+'</span><b class="num">'+m2(ded)+'</b></div><div><span>Net per '+per+'</span><b class="num">'+m2(net)+'</b></div></div></div>'+recordsHtml(i)+'</div>';
+  });
+  h+='</section>';
+  h+='<section class="card"><h2>Take-home summary</h2><div class="scroll"><table class="ledger"><thead><tr><th></th>'+VIEWS.map(x=>'<th class="'+(x[0]===v?'sel':'')+'">'+x[1]+'</th>').join('')+'<th>Yearly</th></tr></thead><tbody>';
+  const cs=VIEWS.map(x=>calc(x[0]));
+  const yr=(k)=>cs[2][k]*12;
+  [['Before deductions','gross'],['After deductions','net'],['Counted in budget','takeHome']].forEach(r=>{h+='<tr><td>'+r[0]+'</td>'+cs.map((c,i)=>'<td class="num '+(VIEWS[i][0]===v?'sel':'')+'">'+m2(c[r[1]])+'</td>').join('')+'<td class="num">'+m2(yr(r[1]))+'</td></tr>'});
+  h+='</tbody></table></div></section>';
+  return h;
+}
+function renderSpending(){
+  const v=S.settings.view,vn=VN[v],C=calc(v);
+  let h='<section class="card"><div class="card-head"><h2>Spending plan</h2><div class="chips"><button class="btn tiny" data-act="reset-spent">Reset spent</button><button class="btn primary tiny" data-act="add-exp">Add category</button></div></div>';
+  h+='<p class="small muted">Enter each bill or budget at the rhythm it really happens. Planned amounts convert to the '+vn+' view, where you can log what you have spent so far.</p>';
+  h+='<div class="stats"><div class="stat"><span class="l">Needs</span><span class="v">'+m0(C.needs)+'</span></div><div class="stat"><span class="l">Wants</span><span class="v">'+m0(C.wants)+'</span></div><div class="stat"><span class="l">Savings</span><span class="v">'+m0(C.savings)+'</span></div><div class="stat"><span class="l">Loans (automatic)</span><span class="v">'+m0(C.loanPay)+'</span></div></div>';
+  if(!S.expenses.length)h+='<p class="muted">No categories yet. Add one, or load a starting list for your household in Setup.</p>';
+  S.expenses.forEach(e=>{
+    const planV=conv(num(e.amount),e.freq,v),sp=num(e.spent),ratio=planV>0?sp/planV:(sp>0?2:0);
+    h+='<div class="row">'+fld('Category','expenses',e.id,'name',e.name,{t:'text'})+fld('Amount','expenses',e.id,'amount',e.amount)
+      +fld('How often','expenses',e.id,'freq',e.freq,{opts:FREQ_OPTS})+fld('Type','expenses',e.id,'bucket',e.bucket,{opts:BUCKET_OPTS})
+      +fld('Spent this '+vn,'expenses',e.id,'spent',e.spent)
+      +'<div class="fld"><span>Planned per '+vn+': <b class="num">'+m2(planV)+'</b></span><div class="meter'+(ratio>1?' over':'')+'"><span style="width:'+Math.min(100,ratio*100)+'%"></span></div><small class="'+(ratio>1?'bad':'muted')+'">'+(planV>0?(ratio>1?m2(sp-planV)+' over':m2(planV-sp)+' left'):'')+'</small></div>'
+      +'<button class="btn tiny danger" data-act="del-exp:'+e.id+'">Remove</button></div>';
+  });
+  h+='</section>';
+  return h;
+}
+function settleAfterNotice(L,sim){
+  const t=TODAY+(L.settleDays|0),extra=sim.dues.filter(d=>d>TODAY&&d<=t).map(d=>({date:isoOf(d),amount:sim.A}));
+  const r=simulate(Object.assign({},L,{payments:(L.payments||[]).concat(extra)}),t,true);
+  return r?r.settle:sim.settle;
+}
+function renderLoans(){
+  let h='';
+  if(!loanSel||!S.loans.find(l=>l.id===loanSel))loanSel=S.loans[0]?S.loans[0].id:null;
+  h+='<section class="card"><div class="card-head"><h2>Loans</h2><div class="chips"><button class="btn primary tiny" data-act="start-intake">Upload a contract</button><button class="btn tiny" data-act="add-loan:car">+ Car loan</button><button class="btn tiny" data-act="add-loan:personal">+ Personal loan</button><button class="btn tiny" data-act="add-loan:property">+ Property loan</button><button class="btn tiny" data-act="add-loan">+ Other loan</button></div></div>';
+  if(S.loans.length)h+='<div class="chips">'+S.loans.map(l=>'<button class="chip" data-act="sel-loan:'+l.id+'" aria-pressed="'+(l.id===loanSel)+'">'+esc(l.name||'Loan')+'</button>').join('')+'</div>';
+  else h+='<p class="muted">Upload a loan contract and Claude reads its terms for you to check, or type the terms in yourself: amount, rate, term, fees and penalty clauses. Ledgerline then tracks interest, penalties, default charges and the falling balance.</p>';
+  h+='</section>';
+  h+=loansSummary();
+  h+=renderIntake();
+  const ent=SIMS.find(x=>x.L.id===loanSel);
+  if(!ent)return h;
+  const L=ent.L,sim=ent.sim;
+  h+='<section class="card"><div class="card-head"><h2>'+esc(L.name||'Loan')+'</h2><div class="chips">'+(sim?'<span class="pill '+status_cls(sim.status)+'">'+sim.status+'</span>':'')
+    +'<button class="btn tiny danger'+(armed==='loan:'+L.id?' armed':'')+'" data-act="del-loan:'+L.id+'">'+(armed==='loan:'+L.id?'Confirm delete':'Delete loan')+'</button></div></div>';
+  if(!sim)h+='<p class="muted">Enter an amount borrowed, number of instalments and a start date in the contract terms below.</p>';
+  else{
+    const s=sim.snap,eapr=effectiveAPR(L);
+    const stat=(l,v,c)=>'<div class="stat"><span class="l">'+l+'</span><span class="v '+(c||'')+'">'+v+'</span></div>';
+    h+='<div class="stats">'+stat('Total owed today',m2(sim.owed))+stat('Loan balance',m2(s.P+s.I))+stat('Penalties and fees owed',m2(s.F),s.F>EPS?'warn':'')
+      +stat('Arrears',m2(s.arrears),s.arrears>0?'bad':'')+stat('Instalment',m2(sim.A))+stat('Next due',sim.nextDue?dShort(sim.nextDue):'None')
+      +stat('Payoff date',sim.payoff?dShort(sim.payoff):'Not reached','')+stat('Settle today',m2(sim.settle))+(num(L.settleDays)>0?stat('Settle after '+L.settleDays+' days notice',m2(settleAfterNotice(L,sim))):'')+'</div>';
+    if(s.arrears>0)h+='<div class="note'+(sim.status==='In default'?' bad':'')+'">'+(sim.status==='In default'?'This loan is in default. ':'')+'Oldest unpaid instalment is '+s.daysOver+' days overdue. Paying '+m2(s.arrears+s.F)+' clears arrears and penalties. Penalty interest keeps accruing daily until then.</div>';
+    if(!(L.payments||[]).length&&!L.paidUpTo&&parseISO(L.start)<TODAY-45)h+='<div class="note">No payments are recorded for a loan that started on '+dShort(parseISO(L.start))+', so every instalment counts as missed. Set "Paid on time up to" in the contract terms, or log the payments made.</div>';
+    if(!sim.payoff)h+='<div class="note">At the current instalment this loan is not paid off within 60 years. The instalment may be below the interest charged.</div>';
+    h+=chartSVG(loanPts(sim),TODAY);
+    h+='<div class="small muted">Solid line: balance to date. Dashed: projection if you clear any arrears at the next due date and then pay on time.</div>';
+    h+='<div class="stats">'+stat('Paid so far',m2(s.paidTotal))+stat('Interest paid',m2(sim.intPaid))+stat('Penalties paid',m2(s.penPaid))
+      +stat('Late fees charged',m2(s.feeAssessed)+' ('+s.lateCount+')')+stat('Default penalty accrued',m2(s.defAccrued),s.defAccrued>EPS?'warn':'')
+      +stat('Interest still to pay',m2(Math.max(0,sim.intFinal-sim.intPaid)))
+      +stat('Contract total',m2(sim.contractual))+stat('Projected total cost',m2(sim.fin.paidTotal+num(L.upfrontFee)))
+      +stat('Effective yearly cost',eapr==null?'n/a':pct(eapr))+'</div>';
+    if(eapr!=null&&eapr>num(L.rate)+3)h+='<div class="note">The quoted rate is '+pct(num(L.rate))+' but fees'+(L.method==='flat'?' and the flat-rate method':'')+' make the real yearly cost about '+pct(eapr)+'. Use this figure when comparing with other loans.</div>';
+  }
+  h+='<details data-key="terms" '+(isOpen('terms',true)?'open':'')+'><summary>Contract terms</summary><div class="inner"><p class="small muted">Copy these from the loan agreement or the key facts sheet. Leave a penalty at 0 if the contract has none.</p><div class="fields">'
+    +termsFields(L,'loans',sim?String(sim.A):'Calculated')
+    +'</div><p class="small muted">Payments are applied to penalties first, then interest, then principal. Check the order in your contract.</p></div></details>';
+  h+=renderStatement(L);
+  h+='<details data-key="pay" '+(isOpen('pay',true)?'open':'')+'><summary>Payments made ('+(L.payments||[]).length+')</summary><div class="inner"><div class="fields">'
+    +'<label class="fld"><span>Date paid</span><input id="pay-date" type="date" value="'+isoOf(TODAY)+'"></label>'
+    +'<label class="fld"><span>Amount paid</span><input id="pay-amt" type="number" inputmode="decimal" step="any" min="0" value="'+(sim?sim.A:'')+'"></label>'
+    +'<div class="fld"><span>&nbsp;</span><button class="btn primary" data-act="add-pay">Log payment</button></div></div>';
+  const pays=(L.payments||[]).slice().sort((a,b)=>a.date<b.date?1:-1);
+  h+=pays.length?'<div>'+pays.map(p=>'<div class="loanrow" style="grid-template-columns:1fr 1fr 1fr auto"><span>'+dShort(parseISO(p.date))+'</span><span class="num">'+m2(num(p.amount))+'</span><span>'+(p.src==='salary'?'<span class="pill muted">From salary</span>':'<span class="small muted">Direct</span>')+'</span><button class="btn tiny danger" data-act="del-pay:'+p.id+'">Remove</button></div>').join('')+'</div>':'<p class="muted small">No payments logged yet.</p>';
+  h+='</div></details>';
+  if(sim){
+    const open=isOpen('sched',false);
+    h+='<details data-key="sched" '+(open?'open':'')+'><summary>Contract repayment schedule</summary><div class="inner">';
+    if(open){
+      h+='<div class="scroll"><table class="ledger"><thead><tr><th>#</th><th>Due</th><th>Payment</th><th>Interest</th><th>Principal</th><th>Balance</th></tr></thead><tbody>'
+        +schedule(L).map(r=>'<tr><td class="num">'+r.i+'</td><td class="num">'+dShort(r.due)+'</td><td class="num">'+m2(r.pay)+'</td><td class="num">'+m2(r.int)+'</td><td class="num">'+m2(r.prin)+'</td><td class="num">'+m2(r.bal)+'</td></tr>').join('')+'</tbody></table></div>';
+    }else h+='<p class="muted small">Open to see every instalment as the contract plans it.</p>';
+    h+='</div></details>';
+  }
+  if(L.contract)h+=contractNotes(L);
+  h+='</section>';
+  return h;
+}
+function currencyOpts(cur){
+  let codes=[];try{codes=Intl.supportedValuesOf('currency').slice()}catch(e){}
+  if(!codes.length)codes=CURRENCIES.slice();
+  if(cur&&codes.indexOf(cur)<0)codes.push(cur);
+  let dn=null;try{dn=new Intl.DisplayNames(['en'],{type:'currency'})}catch(e){}
+  const first=['PGK','AUD','USD','NZD','GBP','EUR'].filter(c=>codes.indexOf(c)>=0);
+  return first.concat(codes.filter(c=>first.indexOf(c)<0).sort()).map(c=>{let n='';try{n=dn?dn.of(c)||'':''}catch(e){}return [c,c+(n&&n!==c?' · '+n:'')]});
+}
+function convertAll(rate,to){
+  const r=num(rate),old=S.settings.currency;
+  if(!(r>0)||!to)return false;
+  const m=x=>round2(num(x)*r);
+  S.income.forEach(i=>{i.gross=m(i.gross);(i.deductions||[]).forEach(d=>{if(d.mode!=='pct')d.value=m(d.value)});
+    (i.records||[]).forEach(x=>{if(x.gross!=null)x.gross=m(x.gross);if(x.net!=null)x.net=m(x.net);(x.deds||[]).forEach(d=>d.amount=m(d.amount));(x.disb||[]).forEach(d=>d.amount=m(d.amount))});
+    (i.disbursements||[]).forEach(d=>d.amount=m(d.amount))});
+  S.expenses.forEach(e=>{e.amount=m(e.amount);e.spent=m(e.spent)});
+  S.loans.forEach(L=>{['principal','installment','upfrontFee','lateFixed','statBal'].forEach(f=>L[f]=m(L[f]));(L.payments||[]).forEach(p=>p.amount=m(p.amount))});
+  (S.goals||[]).forEach(g=>{['target','opening','plan'].forEach(f=>g[f]=m(g[f]));(g.contribs||[]).forEach(c=>c.amount=m(c.amount))});
+  S.ai={};S.settings.currency=to;
+  logEvent('convert','Currency '+old+' to '+to+', every amount multiplied','1 '+old,r+' '+to);
+  return true;
+}
+function renderSetup(){
+  const st=S.settings,id='settings';
+  let h='<section class="card"><h2>Make it yours</h2><div class="fields">'
+    +fld('Currency','settings','x','currency',st.currency,{opts:currencyOpts(st.currency)})
+    +fld('Show currency as','settings','x','curDisp',st.curDisp||'narrowSymbol',{opts:[['narrowSymbol','Symbol, such as K or $'],['code','Code, such as PGK'],['name','Name, such as kina']]})
+    +fld('Decimal places','settings','x','decimals',st.decimals||'auto',{opts:[['auto','Currency default'],['2','Always 2'],['0','None (whole amounts)']]})
+    +fld('Number format','settings','x','numLoc',st.numLoc||'en',{opts:[['en','1,234,567.89'],['de','1.234.567,89'],['fr','1 234 567,89'],['en-IN','12,34,567.89'],['de-CH','1’234’567.89']]})
+    +fld('Date format','settings','x','dateFmt',st.dateFmt||'dmy',{opts:[['dmy','20 Oct 2026'],['mdy','Oct 20, 2026'],['iso','2026-10-20']]})
+    +fld('Appearance','settings','x','theme',st.theme||'auto',{opts:[['auto','Match my device'],['light','Light'],['dark','Dark']]})
+    +fld('Default pay frequency for new income','settings','x','payFreq',st.payFreq||'fortnight',{opts:FREQ_OPTS})
+    +fld('Budget view','settings','x','view',st.view,{opts:VIEWS})
+    +fld('People in household','settings','x','household',st.household)
+    +'</div><h3>Target split of take-home</h3><div class="fields">'
+    +fld('Needs and loans %','settings','x','needsPct',st.needsPct)+fld('Wants %','settings','x','wantsPct',st.wantsPct)+fld('Savings %','settings','x','savePct',st.savePct)
+    +'</div><p class="small muted">The common starting point is 50 / 30 / 20. Change it to fit your life; the Overview compares your plan with these targets.</p></section>';
+  h+='<section class="card"><h2>Starting categories</h2><p class="small muted">Load a ready list of spending categories for your household type. Amounts start at zero for you to fill in.</p><div class="fields"><label class="fld"><span>Household type</span><select id="tpl-sel" data-keep="1">'+Object.keys(TEMPLATES).map(k=>'<option value="'+k+'"'+(k===st.profile?' selected':'')+'>'+TEMPLATES[k][0]+'</option>').join('')+'</select></label><div class="fld"><span>&nbsp;</span><button class="btn'+(armed==='tpl'?' armed':'')+'" data-act="load-template">'+(armed==='tpl'?'Replace my categories':'Load categories')+'</button></div></div></section>';
+  const cv=UI.cv=UI.cv||{to:'',rate:''};
+  h+='<section class="card"><h2>Change currency and convert amounts</h2><p class="small muted">Changing the currency above only changes how amounts are labelled. To move to a different currency and convert everything you have entered, enter the exchange rate. Interest rates and percentages stay the same. Check the result against your own figures afterwards.</p><div class="fields">'
+    +fld('Convert from '+st.currency+' to','cv','x','to',cv.to||st.currency,{opts:currencyOpts(cv.to||st.currency)})
+    +fld('Rate: 1 '+st.currency+' equals','cv','x','rate',cv.rate,{blank0:true,ph:'Exchange rate'})
+    +'<div class="fld"><span>&nbsp;</span><button class="btn'+(armed==='convert'?' armed':'')+'" data-act="convert-all">'+(armed==='convert'?'Confirm: convert every amount':'Convert all amounts')+'</button></div></div>'+(UI.cvErr?'<div class="note bad">'+esc(UI.cvErr)+'</div>':'')+'</section>';
+  const json=JSON.stringify(S);
+  h+='<section class="card"><h2>Back up and restore</h2><p class="small muted">Your data lives only in this browser. Copy the backup text into a note or email to yourself, and paste it below on any device to restore.</p>'
+    +'<label class="fld"><span>Backup text</span><textarea id="bk-out" readonly>'+esc(json)+'</textarea></label><div><button class="btn" data-act="copy-backup">Copy backup</button> <span class="small muted" id="bk-msg"></span></div>'
+    +'<label class="fld"><span>Paste a backup to restore</span><textarea id="bk-in" data-keep="1" placeholder="Paste backup text here"></textarea></label><div><button class="btn" data-act="restore-backup">Restore</button></div></section>';
+  h+='<section class="card"><h2>Reset</h2><div class="chips"><button class="btn" data-act="load-examples">Load example figures</button><button class="btn danger'+(armed==='all'?' armed':'')+'" data-act="clear-all">'+(armed==='all'?'Confirm: erase everything':'Erase everything')+'</button></div></section>';
+  return h;
+}
+
+/* ---------- v2: shared state and helpers ---------- */
+const UI={intake:null,agents:{},chat:[],chatBusy:false,chatCtl:null,chatErr:''};
+let SAMPLE=null,DL=null,LIM=null;
+let CAPS_DONE=false;
+const aiStore=()=>S.ai||(S.ai={});
+const dashOn=k=>!(S.settings.dash&&S.settings.dash[k]===false);
+const repOn=k=>{const s=((S.settings.rep||{}).sections||{})[k];return s===undefined?k!=='schedule':s};
+const sevMap={high:['High priority','bad','▲'],medium:['Worth fixing','warn','◆'],low:['Minor','muted','●'],good:['Going well','good','✓']};
+const sevPill=s=>{const x=sevMap[s]||sevMap.low;return `<span class="pill ${x[1]}">${x[2]} ${x[0]}</span>`};
+const chk=(label,coll,f,val)=>`<label class="chk"><input type="checkbox" id="f-${coll}-x-${f}" data-coll="${coll}" data-id="x" data-f="${f}" data-t="bool"${val?' checked':''}><span>${esc(label)}</span></label>`;
+const PCT_KINDS=['Pension or superannuation','Property management fees','Vacancy allowance','Superannuation or contributions'];
+
+/* ---------- v2: loan terms, contract intake ---------- */
+function termsFields(L,coll,ph){
+  const id=coll==='intake'?'x':L.id;
+  const miss=(coll==='intake'&&UI.intake&&UI.intake.missing)||[];
+  const F=(label,f,o)=>fld(label+(miss.indexOf(f)>=0?' (not found, please check)':''),coll,id,f,L[f],o);
+  return F('Loan name','name',{t:'text'})+F('Lender','lender',{t:'text'})+F('Amount borrowed','principal')
+    +F('Interest method','method',{opts:[['reducing','Reducing balance'],['flat','Flat rate']],hint:'Reducing: interest on what is left. Flat: interest on the original amount for the whole term.'})
+    +F('Interest rate % per year','rate')+F('Number of instalments','term')
+    +F('Instalment frequency','freq',{opts:LOAN_FREQ_OPTS})
+    +F('Loan start date','start',{t:'date',hint:'First instalment falls one period after this date.'})
+    +F('Instalment amount','installment',{blank0:true,ph:ph||'Calculated',hint:'Leave blank to calculate from the terms.'})
+    +F('Upfront or establishment fee','upfrontFee')
+    +F('Late fee, fixed amount','lateFixed')+F('Late fee, % of instalment','latePct')
+    +F('Grace days before late fee','grace')+F('Default declared after days overdue','defaultDays')
+    +F('Default penalty rate % per year','defaultRate',{hint:'Extra interest on the overdue amount once in default.'})
+    +F('Early settlement fee % of balance','earlyPct')+F('Days notice to settle early','settleDays',{hint:'Notice the lender needs before a payout. Leave 0 if none.'})
+    +F('First instalment date','firstDue',{t:'date',hint:'Only if it is not one period after the start date. Common on older contracts.'})
+    +F('Paid on time up to (date)','paidUpTo',{t:'date',hint:'For an older loan with no payment history here: counts every instalment due up to this date as paid.'});
+}
+function contractNotes(L){
+  const c=L.contract,fl=c.flags||[],cl=c.clauses||[];
+  let h=`<details data-key="cnotes"${isOpen('cnotes',false)?' open':''}><summary>From the contract</summary><div class="inner"><p class="small muted">Read by Claude on ${esc(c.at||'')} from ${esc((c.files||[]).join(', ')||'pasted text')}. Check every figure against the original.</p>`;
+  if(fl.length)h+='<div>'+fl.map(f=>`<div class="note${f.severity==='high'?' bad':''}"><b>${esc((sevMap[f.severity]||sevMap.low)[0])}.</b> ${esc(f.text)}</div>`).join('')+'</div>';
+  if((c.checks||[]).length)h+='<h3>Checked against the contract</h3>'+checksTable(c.checks);
+  if(cl.length)h+=`<div class="scroll"><table class="ledger"><thead><tr><th>Topic</th><th>Wording in the contract</th><th>Page</th></tr></thead><tbody>${cl.map(x=>`<tr><td>${esc(x.topic)}</td><td style="text-align:left">${esc(x.excerpt)}</td><td class="num">${esc(x.page==null?'':x.page)}</td></tr>`).join('')}</tbody></table></div>`;
+  return h+'</div></details>';
+}
+const FIELD_LABELS={firstDue:'first instalment date',settleDays:'days notice to settle',principal:'amount borrowed',rate:'interest rate',term:'number of instalments',upfrontFee:'upfront fee',lateFixed:'fixed late fee',latePct:'percentage late fee',grace:'grace days',defaultDays:'days until default',defaultRate:'default penalty rate',earlyPct:'early settlement fee',method:'interest method',freq:'instalment frequency',start:'start date'};
+const CONTRACT_PROMPT=`You are reading a loan agreement for a household budgeting app. Extract the loan terms exactly as the contract states them.
+Reply with only one JSON object in this shape:
+{"name": string (short label such as "Car loan"), "lender": string|null, "currency": string|null (ISO code if shown),
+ "principal": number|null (amount borrowed), "rate": number|null (interest rate as a percentage per YEAR), "method": "reducing"|"flat"|null,
+ "term": number|null (number of instalments), "freq": "week"|"fortnight"|"month"|"quarter"|null (how often instalments fall),
+ "start": "YYYY-MM-DD"|null (drawdown or first-day date), "installment": number|null (stated instalment amount), "firstDue": "YYYY-MM-DD"|null (date of the FIRST instalment, if stated), "maturity": "YYYY-MM-DD"|null (date of the final instalment or maturity date, if stated), "settleDays": number|null (days notice or payout-quote validity needed for early settlement),
+ "upfrontFee": number|null (establishment, application or other upfront fees added together),
+ "lateFixed": number|null (fixed late-payment fee), "latePct": number|null (late fee as % of the instalment),
+ "grace": number|null (grace days before a late fee), "defaultDays": number|null (days overdue before default is declared),
+ "defaultRate": number|null (EXTRA penalty interest, % per year, charged on overdue amounts or after default. Look for clauses titled default interest, penalty interest, arrears interest, overdue interest, additional interest or margin on default. If the contract gives a TOTAL default rate, subtract the normal rate and flag the conversion. If it gives a monthly or daily rate, convert to a yearly percentage and flag it), "earlyPct": number|null (early settlement fee as % of balance),
+ "clauses": [{"topic": string, "excerpt": string (verbatim, at most 20 words), "page": number|null}],
+ "flags": [{"severity": "high"|"medium"|"low", "text": string}]}
+Rules:
+- Use null for anything the contract does not state. Never guess or fill in typical values.
+- Convert rates to a yearly percentage. If the contract gives a monthly rate, multiply by 12 and add a flag saying so. If the interest is a flat total or "flat rate", set method to "flat".
+- If the term is given in months or years, convert to a number of instalments and add a flag showing the conversion.
+- Add flags for anything missing, ambiguous or inconsistent, and for terms that could cost the borrower a lot: high penalty rates, balloon payments, variable rates, compulsory insurance, cross-default, acceleration clauses, security or repossession, guarantees, and fees charged on top of interest.
+- If this is not a loan agreement, set name to null and explain in one flag.
+- Old contracts: use the latest terms. If the contract has been varied, restructured, refinanced or has addenda, use the newest figures and add a flag listing what changed. If the rate is variable or reviewable, extract the rate stated at signing and add a flag. Note any early settlement or payout clause, including notice days, break costs and how the settlement figure is worked out.
+- Check the default, arrears and overdue clauses specifically, even when they are in small print or on the last pages.
+- Quote the clauses that support the penalty, default, early settlement and fee fields.`;
+function intakeError(e){
+  const c=e&&e.code;
+  if(c==='not_granted'||c==='sampling_disabled')return 'Claude was not allowed to read the contract. Allow it when asked, or use "Type terms in".';
+  if(c==='rate_limited')return 'Too many requests right now. Wait a few minutes and try again.';
+  if(c==='image_rejected')return 'One of the images could not be used. Use JPEG, PNG, WebP or GIF files under 20 MB.';
+  if(c==='invalid_json')return 'Claude could not turn the contract into a clean set of terms. Try clearer photos or paste the text.';
+  if(c==='refused')return 'Claude would not process this document.';
+  if(c==='images_unavailable')return 'Image upload is not available in this view. Paste the contract text instead.';
+  if(c==='prompt_too_large')return 'That is too much text at once. Paste only the sections with the loan terms and penalties.';
+  return 'Reading the contract failed. Try again, or use "Type terms in".';
+}
+function loanFromExtract(out,names,I){
+  out=out&&typeof out==='object'?out:{};
+  const missing=[],isoRe=/^\d{4}-\d{2}-\d{2}$/;
+  const n=(f,v,def)=>{if(typeof v==='number'&&isFinite(v)&&v>=0)return v;missing.push(f);return def};
+  const L=newLoan({
+    name:typeof out.name==='string'&&out.name?out.name.slice(0,60):'Loan from contract',
+    lender:typeof out.lender==='string'?out.lender.slice(0,80):'',
+    principal:n('principal',out.principal,0),rate:n('rate',out.rate,0),term:Math.round(n('term',out.term,0)),
+    upfrontFee:n('upfrontFee',out.upfrontFee,0),lateFixed:n('lateFixed',out.lateFixed,0),latePct:n('latePct',out.latePct,0),
+    grace:n('grace',out.grace,0),defaultDays:n('defaultDays',out.defaultDays,30),defaultRate:n('defaultRate',out.defaultRate,0),earlyPct:n('earlyPct',out.earlyPct,0),
+    installment:(typeof out.installment==='number'&&out.installment>0)?out.installment:0,
+    method:out.method==='flat'?'flat':'reducing',
+    freq:['week','fortnight','month','quarter'].indexOf(out.freq)>=0?out.freq:'month',
+    start:isoRe.test(out.start||'')?out.start:isoOf(TODAY),
+    firstDue:isoRe.test(out.firstDue||'')?out.firstDue:'',settleDays:(typeof out.settleDays==='number'&&out.settleDays>=0)?Math.round(out.settleDays):0
+  });
+  if(!out.method)missing.push('method');
+  if(['week','fortnight','month','quarter'].indexOf(out.freq)<0)missing.push('freq');
+  if(!isoRe.test(out.start||''))missing.push('start');
+  const flags=(Array.isArray(out.flags)?out.flags:[]).filter(f=>f&&typeof f.text==='string').slice(0,20).map(f=>({severity:['high','medium','low'].indexOf(f.severity)>=0?f.severity:'low',text:f.text.slice(0,400)}));
+  const clauses=(Array.isArray(out.clauses)?out.clauses:[]).filter(c=>c&&typeof c.excerpt==='string').slice(0,30).map(c=>({topic:String(c.topic||'').slice(0,60),excerpt:c.excerpt.slice(0,300),page:c.page==null?null:String(c.page).slice(0,10)}));
+  if(out.currency&&String(out.currency).toUpperCase()!==String(S.settings.currency).toUpperCase())flags.push({severity:'medium',text:'The contract uses '+String(out.currency).slice(0,8)+' but your budget currency is '+S.settings.currency+'. Amounts here are shown in '+S.settings.currency+'.'});
+  L.contract={files:names,at:isoOf(TODAY),flags,clauses,maturity:isoRe.test(out.maturity||'')?out.maturity:''};
+  I.missing=missing;I.flags=flags;I.clauses=clauses;
+  return L;
+}
+const PDFJS_BASE='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/',MAX_PAGES=20;
+let pdfLoad=null;
+function loadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(pdfLoad)return pdfLoad;
+  pdfLoad=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src=PDFJS_BASE+'pdf.min.js';
+    sc.onload=()=>{if(window.pdfjsLib){window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_BASE+'pdf.worker.min.js';res(window.pdfjsLib)}else{pdfLoad=null;rej(new Error('pdf'))}};
+    sc.onerror=()=>{pdfLoad=null;rej(new Error('pdf'))};document.head.appendChild(sc)});
+  return pdfLoad;
+}
+const isPdf=f=>/pdf$/i.test(f.type||'')||/\.pdf$/i.test(f.name||'');
+async function prepareFiles(files,maxPages){
+  maxPages=maxPages||MAX_PAGES;
+  const imgs=[],texts=[];let pages=0,capped=false;
+  for(const f of files){
+    if(isPdf(f)){
+      let doc;
+      try{const lib=await loadPdfJs();doc=await lib.getDocument({data:await f.arrayBuffer()}).promise}catch(e){const er=new Error('pdf');er.pdf=true;throw er}
+      for(let p=1;p<=doc.numPages;p++){
+        if(pages>=maxPages){capped=true;break}
+        pages++;
+        const pg=await doc.getPage(p);
+        const tc=await pg.getTextContent();
+        const t=tc.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+        if(t.length>=80)texts.push('[Page '+pages+' of '+f.name+']\n'+t);
+        else{
+          const v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:Math.min(2.5,1400/Math.max(v1.width,v1.height))});
+          const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+          await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+          const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));
+          if(blob)imgs.push(new File([blob],f.name+' p'+p+'.jpg',{type:'image/jpeg'}));
+        }
+      }
+    }else{if(pages>=maxPages){capped=true;continue}pages++;imgs.push(f)}
+  }
+  return {imgs,texts,pages,capped};
+}
+function mergeExtracts(outs){
+  const F=['name','lender','currency','principal','rate','method','term','freq','start','installment','upfrontFee','lateFixed','latePct','grace','defaultDays','defaultRate','earlyPct'];
+  const m={clauses:[],flags:[]},seen=new Set();
+  outs.forEach(o=>{if(!o||typeof o!=='object')return;
+    F.forEach(f=>{const v=o[f];if(v==null)return;
+      if(m[f]==null||m[f]===undefined)m[f]=v;
+      else if(typeof v==='number'&&typeof m[f]==='number'&&v!==m[f])m.flags.push({severity:'medium',text:'Different pages give different values for '+(FIELD_LABELS[f]||f)+' ('+m[f]+' and '+v+'). The first was used. Check the contract.'})});
+    (Array.isArray(o.clauses)?o.clauses:[]).forEach(c=>m.clauses.push(c));
+    (Array.isArray(o.flags)?o.flags:[]).forEach(x=>{const k=x&&x.text;if(k&&!seen.has(k)){seen.add(k);m.flags.push(x)}})});
+  F.forEach(f=>{if(m[f]===undefined)m[f]=null});
+  return m;
+}
+const VERIFY_PROMPT=`You are auditing figures that were extracted from a loan contract for a budgeting app. Check each field below against the contract provided (text and/or page images), and judge only from the contract.
+Reply with only one JSON object: {"checks":[{"field":string,"status":"confirmed"|"corrected"|"not_stated","value":number|string|null,"quote":string,"page":number|null,"note":string}],"extra_flags":[{"severity":"high"|"medium"|"low","text":string}]}
+Rules:
+- One check per field in the extracted values. "confirmed": the contract states this value. "corrected": the contract states a different value, put the right one in "value". "not_stated": the contract does not state it at all, so the extracted value was a guess or a default.
+- Units: rates are percent per YEAR (convert monthly rates by multiplying by 12 and say so in note), amounts are in the contract currency, term is the number of instalments, freq is week, fortnight, month or quarter, start and firstDue are YYYY-MM-DD (firstDue is the date of the first instalment), settleDays is days notice for early settlement, method is reducing or flat.
+- For defaultRate: search every clause on default interest, penalty interest, arrears or overdue interest and additional interest. If the contract gives a total default rate, "value" is the total minus the normal rate, and note says so. If this part of the contract has no such clause, use not_stated.
+- "quote" is the supporting wording, verbatim, at most 25 words, or "" when not_stated. "page" is the page number if known.
+- If a fact in this part of the contract is not covered by the fields (for example balloon payment, variable rate, insurance), add it to extra_flags.
+EXTRACTED VALUES:
+`;
+const VERIFY_FIELDS=['principal','rate','method','term','freq','start','firstDue','settleDays','installment','upfrontFee','lateFixed','latePct','grace','defaultDays','defaultRate','earlyPct'];
+function coerceField(f,v){
+  if(f==='method')return v==='flat'?'flat':v==='reducing'?'reducing':undefined;
+  if(f==='freq')return ['week','fortnight','month','quarter'].indexOf(v)>=0?v:undefined;
+  if(f==='start'||f==='firstDue')return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?String(v):undefined;
+  const n=typeof v==='number'?v:parseFloat(v);
+  return Number.isFinite(n)&&n>=0?(f==='term'?Math.round(n):n):undefined;
+}
+function localChecks(L,I){
+  const fl=I.flags;
+  if(num(L.installment)>0&&num(L.principal)>0&&(L.term|0)>0){
+    const calc=installmentOf(Object.assign({},L,{installment:0}));
+    if(calc>0&&Math.abs(calc-num(L.installment))/calc>0.02)fl.push({severity:'medium',text:'The instalment in the contract ('+m2(num(L.installment))+') differs from what the amount, rate, term and method give ('+m2(calc)+'). A fee, a different method or a misread figure could explain it, so check the terms. The contract instalment is used.'});
+  }
+  const mat=L.contract&&L.contract.maturity;
+  if(mat&&ISO_RE.test(mat)&&(L.term|0)>0&&ISO_RE.test(L.start||'')){const last=dueAt(L,L.term|0),diff=Math.abs(last-parseISO(mat));if(diff>35)fl.push({severity:'high',text:'The contract says the loan ends on '+dShort(parseISO(mat))+' but the start date, first instalment date, number of instalments and frequency give '+dShort(last)+'. One of them is probably wrong, or the loan was varied. Check the dates.'})}
+  if(ISO_RE.test(L.start||'')&&parseISO(L.start)<TODAY-45&&!(L.payments||[]).length&&!L.paidUpTo)fl.push({severity:'medium',text:'This loan started a while ago and no payments are recorded, so it will show as unpaid. After adding it, set "Paid on time up to" or log the payments made.'});
+  if((I.missing||[]).indexOf('defaultRate')>=0)fl.push({severity:'medium',text:'No default penalty rate was found. Press "Verify against the contract" to search the default and arrears clauses again.'});
+  if(num(L.defaultRate)>0&&num(L.defaultRate)>60)fl.push({severity:'medium',text:'A default penalty rate of '+num(L.defaultRate)+'% a year is very high. Check whether it is a monthly rate or a total rate.'});
+}
+function checksTable(rows){
+  const lab={confirmed:['good','✓ Confirmed'],corrected:['warn','▲ Corrected'],not_stated:['muted','● Not in contract']};
+  return `<div class="scroll"><table class="ledger"><thead><tr><th>Term</th><th>Result</th><th>Value</th><th>Contract wording</th><th>Page</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(FIELD_LABELS[r.field]||r.field)}</td><td><span class="pill ${lab[r.status][0]}">${lab[r.status][1]}</span></td><td class="num">${esc(r.status==='corrected'?r.was+' → '+r.now:r.now)}</td><td style="text-align:left">${esc(r.quote||'')}${r.note?'<div class="small muted">'+esc(r.note)+'</div>':''}</td><td class="num">${esc(r.page==null?'':r.page)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+async function verifyIntake(){
+  const I=UI.intake;if(!I||!I.loan||!I.src||!SAMPLE||I.status==='verifying')return;
+  const L=I.loan,cur={};VERIFY_FIELDS.forEach(f=>cur[f]=L[f]);
+  I.err='';I.status='verifying';const ctl=new AbortController();I.ctl=ctl;
+  const bs=I.src.batches,nb=bs.length,res={};
+  try{
+    for(let b=0;b<nb;b++){
+      I.progress=nb>1?'Checking batch '+(b+1)+' of '+nb+'…':'Checking each figure against the contract…';render();
+      const imgs=bs[b];
+      const prompt=VERIFY_PROMPT+JSON.stringify(cur)+(imgs.length?'\n\nThe attached images are contract pages, in order.':'')+(nb>1?'\n\nThis is part '+(b+1)+' of '+nb+' of one contract. Use not_stated for fields that are not on these pages.':'')+(b===0&&I.src.textAll?'\n\nCONTRACT TEXT (pages marked):\n'+I.src.textAll.slice(0,200000):'');
+      const o2={signal:ctl.signal,cache:false};if(imgs.length)o2.images=imgs;
+      const r=await SAMPLE.json(prompt,o2);
+      if(UI.intake!==I||ctl.signal.aborted)return;
+      (Array.isArray(r&&r.checks)?r.checks:[]).forEach(c=>{if(!c||VERIFY_FIELDS.indexOf(c.field)<0)return;const prev=res[c.field];if(!prev||(prev.status==='not_stated'&&c.status!=='not_stated'))res[c.field]=c});
+      (Array.isArray(r&&r.extra_flags)?r.extra_flags:[]).forEach(x=>{if(x&&typeof x.text==='string'&&!I.flags.some(y=>y.text===x.text))I.flags.push({severity:['high','medium','low'].indexOf(x.severity)>=0?x.severity:'low',text:x.text.slice(0,400)})});
+    }
+    const rows=[];
+    VERIFY_FIELDS.forEach(f=>{
+      const c=res[f];if(!c)return;
+      let st=['confirmed','corrected','not_stated'].indexOf(c.status)>=0?c.status:'not_stated';const was=L[f];
+      if(st==='corrected'){const v=coerceField(f,c.value);if(v===undefined||v===was)st=v===was?'confirmed':'not_stated';else{L[f]=v;I.missing=(I.missing||[]).filter(x=>x!==f)}}
+      rows.push({field:f,status:st,was,now:L[f],quote:String(c.quote||'').slice(0,200),page:c.page==null?null:String(c.page).slice(0,10),note:String(c.note||'').slice(0,250)});
+    });
+    I.checks=rows;L.contract.checks=rows;
+    const bad=rows.filter(r=>r.status==='not_stated'&&num(r.now)>0&&typeof r.now==='number');
+    if(bad.length)I.flags.push({severity:'high',text:'These figures were not found in the contract, so they may be guesses: '+bad.map(r=>FIELD_LABELS[r.field]||r.field).join(', ')+'. Check or clear them.'});
+    I.status='review';
+  }catch(e){
+    if(UI.intake!==I)return;
+    I.status='review';I.err=(e&&e.code==='cancelled')?'':'The check did not finish. '+intakeError(e);
+  }
+  render();
+}
+async function extractContract(){
+  const I=UI.intake;if(!I||!SAMPLE)return;
+  const ta=document.getElementById('ct-text'),text=ta?ta.value.trim():'',files=I.fileObjs||[];
+  if(!files.length&&text.length<40){I.err='Add contract pages or paste the contract text first.';render();return}
+  I.err='';I.status='reading';
+  const ctl=new AbortController();I.ctl=ctl;render();
+  const opts={signal:ctl.signal,cache:false};
+  try{
+    const prep=await prepareFiles(files);
+    if(UI.intake!==I||ctl.signal.aborted)return;
+    const mx=LIM&&LIM.images?LIM.images.maxCount:0;
+    if(prep.imgs.length&&!mx)throw {code:'images_unavailable'};
+    const textAll=(prep.texts.join('\n\n')+(text?'\n\n'+text:'')).trim();
+    const batches=[];
+    if(prep.imgs.length)for(let k=0;k<prep.imgs.length;k+=mx)batches.push(prep.imgs.slice(k,k+mx));else batches.push([]);
+    const outs=[],nb=batches.length;I.src={batches,textAll};
+    for(let b=0;b<nb;b++){
+      I.progress=nb>1?'Reading pages in batches of '+mx+': batch '+(b+1)+' of '+nb+'. Each batch takes about 30 to 60 seconds.':'';
+      render();
+      const imgs=batches[b];
+      const prompt=CONTRACT_PROMPT+(imgs.length?'\n\nThe attached images are contract pages (scans or photos), in order.':'')
+        +(nb>1?'\n\nThis is part '+(b+1)+' of '+nb+' of ONE contract. Extract only what these pages state and use null for the rest. Do not flag missing items, because other parts cover them.':'')
+        +(b===0&&textAll?'\n\nCONTRACT TEXT (pages marked):\n'+textAll.slice(0,200000):'');
+      const o2=Object.assign({},opts);if(imgs.length)o2.images=imgs;
+      outs.push(await SAMPLE.json(prompt,o2));
+      if(UI.intake!==I||ctl.signal.aborted)return;
+    }
+    const out=mergeExtracts(outs);
+    if(UI.intake!==I)return;
+    if(out&&out.name===null&&!out.principal){I.status='upload';I.err=((out.flags||[])[0]||{}).text||'This does not look like a loan agreement.'}
+    else{I.loan=loanFromExtract(out,files.map(f=>f.name),I);localChecks(I.loan,I);I.status='review';if(prep.capped)I.flags.push({severity:'medium',text:'Only the first '+MAX_PAGES+' pages were read. Terms on later pages, such as penalties, may be missing.'})}
+  }catch(e){
+    if(UI.intake!==I)return;
+    I.status='upload';I.err=(e&&e.code==='cancelled')?'':(e&&e.pdf)?'The PDF could not be opened or the PDF reader could not load. Try again, use page photos, or paste the text.':(e&&e.code==='too_many_images')?'This has '+e.n+' scanned pages but only '+e.max+' images can be read at once. Use a text-based PDF, or read the first '+e.max+' pages.':intakeError(e);
+  }
+  render();
+}
+function renderIntake(){
+  const I=UI.intake;if(!I)return '';
+  let h='<section class="card"><div class="card-head"><h2>Add a loan from its contract</h2><button class="btn tiny" data-act="cancel-intake">Close</button></div>';
+  if(!SAMPLE)return h+'<p class="muted">Reading contracts needs this page to be open inside Claude, and that was not detected. You can still use "Type terms in".</p></section>';
+  if(I.status==='review'||I.status==='verifying'){
+    h+='<p class="small muted">Claude read these terms from the contract. Nothing is saved until you add the loan, so check each figure against the original.</p>';
+    (I.flags||[]).forEach(f=>{h+=`<div class="note${f.severity==='high'?' bad':''}"><b>${esc((sevMap[f.severity]||sevMap.low)[0])}.</b> ${esc(f.text)}</div>`});
+    if((I.missing||[]).length)h+='<div class="note">Not stated in the contract: '+esc(I.missing.map(f=>FIELD_LABELS[f]||f).join(', '))+'. Penalty fields show 0 when the contract has none; fill in anything you know applies.</div>';
+    h+='<div class="fields">'+termsFields(I.loan,'intake','Calculated')+'</div>';
+    if((I.clauses||[]).length)h+=`<details data-key="intake-clauses"><summary>Wording Claude relied on</summary><div class="inner"><div class="scroll"><table class="ledger"><thead><tr><th>Topic</th><th>Wording in the contract</th><th>Page</th></tr></thead><tbody>${I.clauses.map(x=>`<tr><td>${esc(x.topic)}</td><td style="text-align:left">${esc(x.excerpt)}</td><td class="num">${esc(x.page==null?'':x.page)}</td></tr>`).join('')}</tbody></table></div></div></details>`;
+    if(I.err)h+=`<div class="note bad">${esc(I.err)}</div>`;
+    if(I.checks&&I.checks.length)h+='<h3>Check against the contract</h3>'+checksTable(I.checks);
+    const vb=I.status==='verifying';
+    if(vb)h+='<p class="small muted">'+esc(I.progress||'Checking…')+'</p>';
+    return h+'<div class="chips"><button class="btn primary" data-act="confirm-intake"'+(vb?' disabled':'')+'>Add this loan</button>'+(vb?'<button class="btn tiny" data-act="stop-intake">Stop</button>':'<button class="btn" data-act="verify-intake">'+(I.checks?'Verify again':'Verify against the contract')+'</button>')+'<button class="btn" data-act="restart-intake"'+(vb?' disabled':'')+'>Start over</button></div><p class="small muted">Verifying reads the contract a second time and uses more of your Claude allowance. It compares each figure with the contract wording and corrects what differs.</p></section>';
+  }
+  const imgOK=!!(LIM&&LIM.images),max=imgOK?LIM.images.maxCount:0,acc=(imgOK?LIM.images.mediaTypes:[]).concat(['application/pdf','.pdf']).join(',');
+  h+='<p class="small muted">Add the contract as a PDF or as page photos, up to 20 pages, or paste the text. Claude reads the terms, shows what it found and flags anything unclear or costly. Only the extracted terms are kept, not the images or the text.</p>';
+  h+=`<label class="fld"><span>Contract files: PDF or images, up to ${MAX_PAGES} pages</span><input type="file" id="ct-files" multiple accept="${esc(acc)}"></label>`;
+  if((I.fileObjs||[]).length)h+=`<p class="small">${I.fileObjs.length} file${I.fileObjs.length>1?'s':''} ready: ${esc(I.fileObjs.map(f=>f.name).join(', '))}</p>`;
+  h+='<label class="fld"><span>Or paste the contract text</span><textarea id="ct-text" data-keep="1" placeholder="Paste the loan agreement text here"></textarea></label>';
+  h+='<p class="small muted">Text PDFs are read as text, which is the cheapest and most accurate. Scanned pages are sent as images in batches, read one batch after another until the contract is finished. Each batch uses your Claude allowance.</p>';
+  if(I.err)h+=`<div class="note bad">${esc(I.err)}</div>`;
+  h+=I.status==='reading'?'<div class="chips"><button class="btn" disabled>Reading…</button><button class="btn tiny" data-act="stop-intake">Stop</button></div><p class="small muted">'+esc(I.progress||'Reading a contract usually takes 20 to 60 seconds.')+'</p>':'<div><button class="btn primary" data-act="extract-contract">Read the contract</button></div>';
+  return h+'</section>';
+}
+
+/* ---------- v2: dashboard ---------- */
+function projection(){
+  const rows=[],d0=new Date(TODAY*864e5),M=calc('month');
+  const catchUp=SIMS.reduce((t,x)=>t+(x.sim&&x.sim.active?x.sim.snap.arrears+x.sim.snap.F:0),0);
+  for(let m=1;m<=12;m++){
+    const y=d0.getUTCFullYear(),mo=d0.getUTCMonth()+m;
+    const from=Math.round(Date.UTC(y,mo,1)/864e5),to=Math.round(Date.UTC(y,mo+1,1)/864e5)-1;
+    let loans=0;
+    SIMS.forEach(x=>{const s=x.sim;if(!s)return;const end=s.payoff===null?Infinity:s.payoff;s.dues.forEach(dd=>{if(dd>=from&&dd<=to&&dd<=end&&dd>TODAY)loans+=s.A})});
+    const cu=m===1?catchUp:0;
+    rows.push({label:new Date(from*864e5).toLocaleDateString('en',{month:'short',timeZone:'UTC'}),full:new Date(from*864e5).toLocaleDateString('en',{month:'long',year:'numeric',timeZone:'UTC'}),
+      income:M.takeHome,spending:M.planned,loans,catchUp:cu,left:M.takeHome-M.planned-loans-cu});
+  }
+  return rows;
+}
+function cashflowSVG(rows){
+  const W=640,H=240,Lm=58,Rm=12,Tm=14,Bm=28;
+  const ymax=(Math.max.apply(null,rows.map(r=>Math.max(r.income,r.loans+r.spending+r.catchUp)))||1)*1.08;
+  const bw=(W-Lm-Rm)/rows.length,X=i=>Lm+i*bw,Y=v=>Tm+(1-v/ymax)*(H-Tm-Bm);
+  let s=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Next 12 months: take-home against loans, spending and arrears">`;
+  [0,.5,1].forEach(f=>{const y=Y(ymax*f);s+=`<line class="gl" x1="${Lm}" x2="${W-Rm}" y1="${y}" y2="${y}"/><text class="ax" x="${Lm-6}" y="${y+4}" text-anchor="end">${nfc.format(ymax*f)}</text>`});
+  rows.forEach((r,i)=>{
+    let acc=0;
+    [[r.loans,'--c-loans','Loans'],[r.spending,'--c-needs','Spending'],[r.catchUp,'--c-wants','Arrears and penalties']].forEach(sg=>{
+      if(!(sg[0]>0))return;
+      const y1=Y(acc+sg[0]),y0=Y(acc);
+      s+=`<rect x="${(X(i)+bw*.2).toFixed(1)}" y="${y1.toFixed(1)}" width="${(bw*.6).toFixed(1)}" height="${Math.max(0,y0-y1).toFixed(1)}" rx="2" style="fill:var(${sg[1]});stroke:var(--surface);stroke-width:2"><title>${esc(r.full)}: ${esc(sg[2])} ${esc(m2(sg[0]))}</title></rect>`;
+      acc+=sg[0];
+    });
+    s+=`<text class="ax" x="${(X(i)+bw/2).toFixed(1)}" y="${H-8}" text-anchor="middle">${r.label}</text>`;
+  });
+  const pts=rows.map((r,i)=>[X(i)+bw/2,Y(r.income)]);
+  s+=`<path d="${pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')}" style="fill:none;stroke:var(--ink);stroke-width:2"/>`;
+  pts.forEach((p,i)=>{s+=`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" style="fill:var(--ink);stroke:var(--surface);stroke-width:2"><title>${esc(rows[i].full)}: take-home ${esc(m2(rows[i].income))}</title></circle>`});
+  return s+'</svg>';
+}
+function ruleMeters(C){
+  const th=C.takeHome,st=S.settings;
+  const rule=[['Needs and loans',C.needs+C.loanPay,st.needsPct,true],['Wants',C.wants,st.wantsPct,true],['Savings',C.savings,st.savePct,false]];
+  return '<div class="fields">'+rule.map(r=>{const share=th>0?r[1]/th*100:0,bad=r[3]?share>r[2]:share<r[2];
+    return '<div class="fld"><span>'+r[0]+': '+pct(share)+' of take-home (target '+r[2]+'%)</span><div class="meter'+(bad&&r[3]?' over':'')+'"><span style="width:'+Math.min(100,share/(r[2]||1)*50)+'%"></span></div><small class="'+(bad?'warn':'good')+'">'+(r[3]?(bad?'▲ Above target':'✓ Within target'):(bad?'▲ Below target':'✓ On or above target'))+'</small></div>'}).join('')+'</div>';
+}
+function renderDashAll(){
+  const v=S.settings.view,vn=VN[v],C=calc(v),M=calc('month'),live=SIMS.filter(x=>x.sim);
+  const stat=(l,val,c)=>`<div class="stat"><span class="l">${l}</span><span class="v ${c||''}">${val}</span></div>`;
+  let h=`<section class="card"><div class="card-head"><h2>Dashboard</h2><span class="small muted">Per ${vn} unless stated</span></div><details data-key="dash-custom"${isOpen('dash-custom',false)?' open':''}><summary>Choose what to show</summary><div class="inner"><div class="chips">${[['kpi','Key figures'],['cash','Next 12 months'],['spend','Spending mix'],['debt','Debt'],['health','Budget health'],['goals','Savings goals']].map(x=>chk(x[1],'dash',x[0],dashOn(x[0]))).join('')}</div></div></details></section>`;
+  const owed=live.reduce((t,x)=>t+x.sim.owed,0),pens=live.reduce((t,x)=>t+x.sim.snap.penPaid+x.sim.snap.F,0);
+  const lastPay=live.length&&live.every(x=>x.sim.payoff)?Math.max.apply(null,live.map(x=>x.sim.payoff)):null;
+  if(dashOn('kpi')){
+    const sr=C.takeHome>0?C.savings/C.takeHome*100:0,dti=M.gross>0?M.loanPay/M.gross*100:null;
+    h+='<section class="stats">'+stat('Take-home',m0(C.takeHome))+stat('Home budget after loans',m0(C.home),C.home<0?'bad':'')+stat(C.left<0?'Over budget by':'Left unallocated',m0(Math.abs(C.left)),C.left<0?'bad':'good')
+      +stat('Savings rate',pct(sr),sr<num(S.settings.savePct)?'warn':'good')+stat('Loan repayments to income',dti==null?'n/a':pct(dti),dti!=null&&dti>36?'warn':'')
+      +stat('Total owed',m0(owed))+stat('Debt-free date',lastPay?dShort(lastPay):'Not reached')+stat('Penalties and late fees',m0(pens),pens>EPS?'warn':'')+'</section>';
+  }
+  if(dashOn('cash')){
+    const rows=projection(),s0=rows[0].income-rows[0].spending-rows[0].loans,s11=rows[11].income-rows[11].spending-rows[11].loans;
+    const short=rows.filter(r=>r.left<0).map(r=>r.label);
+    h+='<section class="card"><div class="card-head"><h2>Next 12 months</h2><span class="small muted">Monthly averages for pay and spending; loan instalments on their real due dates</span></div>'+cashflowSVG(rows)
+      +`<div class="legend"><span><i style="background:var(--c-loans)"></i>Loans</span><span><i style="background:var(--c-needs)"></i>Spending</span>${rows.some(r=>r.catchUp>0)?'<span><i style="background:var(--c-wants)"></i>Arrears and penalties</span>':''}<span><span class="lg-line"></span>Take-home</span></div>`;
+    if(rows[11].loans<rows[0].loans-EPS)h+=`<p class="small">Loan repayments fall from ${m0(rows[0].loans)} to ${m0(rows[11].loans)} a month by ${esc(rows[11].full)}, lifting the monthly surplus from ${m0(s0)} to ${m0(s11)}.</p>`;
+    if(rows[0].catchUp>0)h+=`<p class="small warn">The first month includes ${m0(rows[0].catchUp)} to clear arrears and penalties.</p>`;
+    if(short.length)h+=`<div class="note bad">Plan is short in: ${esc(short.join(', '))}.</div>`;
+    h+=`<details data-key="cf-table"${isOpen('cf-table',false)?' open':''}><summary>View as table</summary><div class="inner"><div class="scroll"><table class="ledger"><thead><tr><th>Month</th><th>Take-home</th><th>Spending</th><th>Loans</th><th>Arrears</th><th>Left</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.full)}</td><td class="num">${m2(r.income)}</td><td class="num">${m2(r.spending)}</td><td class="num">${m2(r.loans)}</td><td class="num">${m2(r.catchUp)}</td><td class="num ${r.left<0?'bad':''}">${m2(r.left)}</td></tr>`).join('')}</tbody></table></div></div></details></section>`;
+  }
+  if(dashOn('spend')){
+    const items=S.expenses.map(e=>({n:e.name,a:conv(num(e.amount),e.freq,v),c:{needs:'--c-needs',wants:'--c-wants',savings:'--c-save'}[e.bucket]}));
+    if(C.loanPay>0)items.push({n:'Loan repayments',a:C.loanPay,c:'--c-loans'});
+    items.sort((a,b)=>b.a-a.a);const mx=items.length?items[0].a:1;
+    h+=`<section class="card"><div class="card-head"><h2>Spending mix</h2><span class="small muted">Per ${vn}</span></div>`;
+    h+=items.length?'<div>'+items.map(x=>`<div class="hbar"><span class="nm">${esc(x.n)}</span><div class="trk"><i style="width:${(x.a/mx*100).toFixed(1)}%;background:var(${x.c})"></i></div><b class="num">${m0(x.a)}</b></div>`).join('')+'</div>':'<p class="muted">No spending categories yet.</p>';
+    h+='<div class="legend"><span><i style="background:var(--c-loans)"></i>Loans</span><span><i style="background:var(--c-needs)"></i>Needs</span><span><i style="background:var(--c-wants)"></i>Wants</span><span><i style="background:var(--c-save)"></i>Savings</span></div></section>';
+  }
+  if(dashOn('debt')){
+    h+='<section class="card"><div class="card-head"><h2>Debt</h2><button class="btn tiny" data-act="tab:loans">Open loans</button></div>';
+    if(!live.length)h+='<p class="muted">No loans recorded.</p>';
+    else{
+      const dti=M.gross>0?M.loanPay/M.gross*100:null;
+      if(dti!=null)h+=`<p class="small">Loan repayments take ${pct(dti)} of income before deductions. Many lenders look for this to stay under roughly 36%, though limits differ.</p>`;
+      h+=chartSVG(combinedPts(),TODAY);
+      h+=`<div class="scroll"><table class="ledger"><thead><tr><th>Loan</th><th>Quoted rate</th><th>Real yearly cost</th><th>Owed today</th><th>Interest still to pay</th><th>Payoff</th><th>Status</th></tr></thead><tbody>${live.map(x=>{const e=effectiveAPR(x.L);return `<tr><td>${esc(x.L.name)}</td><td class="num">${pct(num(x.L.rate))}</td><td class="num">${e==null?'n/a':pct(e)}</td><td class="num">${m2(x.sim.owed)}</td><td class="num">${m2(Math.max(0,x.sim.intFinal-x.sim.intPaid))}</td><td class="num">${x.sim.payoff?dShort(x.sim.payoff):'Not reached'}</td><td><span class="pill ${status_cls(x.sim.status)}">${x.sim.status}</span></td></tr>`}).join('')}</tbody></table></div>`;
+    }
+    h+='</section>';
+  }
+  if(dashOn('goals')&&(S.goals||[]).length)h+=dashGoalsCard();
+  if(dashOn('health')){
+    const over=S.expenses.map(e=>({n:e.name,plan:conv(num(e.amount),e.freq,v),sp:num(e.spent)})).filter(x=>x.sp>x.plan+EPS).sort((a,b)=>(b.sp-b.plan)-(a.sp-a.plan)).slice(0,5);
+    h+=`<section class="card"><div class="card-head"><h2>Budget health</h2><span class="small muted">Against your targets and this ${vn}'s spending</span></div>${ruleMeters(C)}`;
+    h+=over.length?'<div>'+over.map(x=>`<div class="loanrow" style="grid-template-columns:1.5fr 1fr 1fr"><b>${esc(x.n)}</b><span class="num">Planned ${m2(x.plan)}</span><span class="num bad">Spent ${m2(x.sp)}</span></div>`).join('')+'</div>':'<p class="small muted">No category is over its plan this '+vn+'.</p>';
+    return h+'</section>';
+  }
+  return h;
+}
+
+/* ---------- v2: portfolio dashboards by section ---------- */
+let dashSec='all';
+const DASH_SECS=[['all','Overall'],['loans','Loans'],['income','Income'],['spending','Spending'],['savings','Savings']];
+const sumBy=(a,f)=>a.reduce((t,x)=>t+f(x),0);
+const hbars=(items,col,fmt)=>{const mx=Math.max.apply(null,items.map(x=>x.a))||1;return items.length?'<div>'+items.map(x=>`<div class="hbar"><span class="nm">${esc(x.n)}</span><div class="trk"><i style="width:${(Math.max(0,x.a)/mx*100).toFixed(1)}%;background:var(${col})"></i></div><b class="num">${(fmt||m0)(x.a)}</b></div>`).join('')+'</div>':'<p class="muted small">Nothing to show yet.</p>'};
+const statT=(l,v,c)=>`<div class="stat"><span class="l">${l}</span><span class="v ${c||''}">${v}</span></div>`;
+const emptyCard=t=>`<section class="card"><p class="muted">${t}</p></section>`;
+function renderDashboard(){
+  const sw='<div class="chips" role="group" aria-label="Dashboard section">'+DASH_SECS.map(x=>`<button class="chip" data-act="dsec:${x[0]}" aria-pressed="${dashSec===x[0]}">${x[1]}</button>`).join('')+'</div>';
+  const fn={all:renderDashAll,loans:renderDashLoans,income:renderDashIncome,spending:renderDashSpending,savings:renderDashSavings}[dashSec]||renderDashAll;
+  return sw+fn();
+}
+function renderDashLoans(){
+  const live=SIMS.filter(x=>x.sim);
+  if(!live.length)return emptyCard('No loans recorded yet. Add a loan in Loans to see the portfolio.');
+  const act=live.filter(x=>x.sim.active),M=calc('month');
+  const owed=sumBy(live,x=>x.sim.owed),borrowed=sumBy(live,x=>num(x.L.principal)),paid=sumBy(live,x=>x.sim.snap.paidTotal),ctot=sumBy(live,x=>x.sim.A*x.sim.n);
+  const monthly=sumBy(act,x=>conv(x.sim.A,x.L.freq,'month')),remInt=sumBy(live,x=>Math.max(0,x.sim.intFinal-x.sim.intPaid));
+  const pens=sumBy(live,x=>x.sim.snap.F),arrears=sumBy(live,x=>x.sim.snap.arrears);
+  const wRate=owed>0?sumBy(act,x=>num(x.L.rate)*x.sim.owed)/Math.max(1,sumBy(act,x=>x.sim.owed)):0;
+  const lastPay=act.length&&act.every(x=>x.sim.payoff)?Math.max.apply(null,act.map(x=>x.sim.payoff)):null;
+  const dti=M.gross>0?monthly/M.gross*100:null,pctPaid=ctot>0?Math.min(100,paid/ctot*100):0;
+  let h='<section class="stats">'+statT('Total owed',m0(owed))+statT('Borrowed in total',m0(borrowed))+statT('Contract paid so far',pct(pctPaid))+statT('Repayments per month',m0(monthly))
+    +statT('Repayments to income',dti==null?'n/a':pct(dti),dti!=null&&dti>36?'warn':'')+statT('Average quoted rate',pct(wRate))+statT('Interest still to pay',m0(remInt))
+    +statT('Arrears',m0(arrears),arrears>EPS?'bad':'')+statT('Penalties and fees owed',m0(pens),pens>EPS?'warn':'')+statT('Debt-free date',lastPay?dShort(lastPay):'Not reached')+'</section>';
+  h+='<section class="card"><div class="card-head"><h2>Total balance over time</h2><span class="small muted">All loans combined</span></div>'+chartSVG(combinedPts(),TODAY)+'</section>';
+  h+='<section class="grid2"><div class="card"><h2>Owed by loan</h2>'+hbars(live.map(x=>({n:x.L.name,a:x.sim.owed})).sort((a,b)=>b.a-a.a),'--c-loans')+'</div><div class="card"><h2>Interest still to pay</h2>'+hbars(live.map(x=>({n:x.L.name,a:Math.max(0,x.sim.intFinal-x.sim.intPaid)})).sort((a,b)=>b.a-a.a),'--c-needs')+'</div></section>';
+  h+=`<section class="card"><h2>Loan portfolio</h2><div class="scroll"><table class="ledger"><thead><tr><th>Loan</th><th>Owed</th><th>Paid</th><th>Instalment</th><th>Quoted</th><th>Real cost</th><th>Interest left</th><th>Penalties</th><th>Payoff</th><th>Status</th></tr></thead><tbody>${live.map(x=>{const e=effectiveAPR(x.L),s=x.sim,pp=s.A*s.n>0?Math.min(100,s.snap.paidTotal/(s.A*s.n)*100):0;return `<tr><td>${esc(x.L.name)}</td><td class="num">${m0(s.owed)}</td><td class="num">${pct(pp)}</td><td class="num">${m0(s.A)} ${FREQ_LABEL[x.L.freq].toLowerCase()}</td><td class="num">${pct(num(x.L.rate))}</td><td class="num">${e==null?'n/a':pct(e)}</td><td class="num">${m0(Math.max(0,s.intFinal-s.intPaid))}</td><td class="num">${m0(s.snap.F)}</td><td class="num">${s.payoff?dShort(s.payoff):'Not reached'}</td><td><span class="pill ${status_cls(s.status)}">${s.status}</span></td></tr>`}).join('')}</tbody></table></div></section>`;
+  const due=[];act.forEach(x=>x.sim.dues.forEach(d=>{if(d>TODAY&&d<=TODAY+90&&(x.sim.payoff==null||d<=x.sim.payoff))due.push({d,n:x.L.name,a:x.sim.A})}));due.sort((a,b)=>a.d-b.d);
+  h+='<section class="grid2"><div class="card"><h2>Due in the next 90 days</h2>'+(due.length?'<div>'+due.slice(0,10).map(x=>`<div class="loanrow" style="grid-template-columns:1fr 1.4fr 1fr"><span class="num">${dShort(x.d)}</span><span>${esc(x.n)}</span><b class="num">${m2(x.a)}</b></div>`).join('')+'</div><p class="small muted">Total '+m0(sumBy(due,x=>x.a))+'</p>':'<p class="muted small">Nothing falls due.</p>')+'</div>';
+  const risks=[];
+  live.forEach(x=>{const s=x.sim.snap,e=effectiveAPR(x.L);
+    if(s.arrears>EPS)risks.push(`<b>${esc(x.L.name)}</b> is ${s.daysOver} days behind: ${m2(s.arrears+s.F)} clears it.${x.sim.status==='In default'?' In default.':''}`);
+    if(e!=null&&e>num(x.L.rate)+3)risks.push(`<b>${esc(x.L.name)}</b> costs about ${pct(e)} a year in real terms against a quoted ${pct(num(x.L.rate))}.`);
+    if(!x.sim.payoff)risks.push(`<b>${esc(x.L.name)}</b> is not paid off within 60 years at this instalment.`)});
+  if(dti!=null&&dti>36)risks.push('Loan repayments take '+pct(dti)+' of income, above the roughly 36% many lenders watch.');
+  h+='<div class="card"><h2>Watch list</h2>'+(risks.length?risks.map(r=>`<div class="note">${r}</div>`).join(''):'<p class="good">✓ No loan needs urgent attention.</p>')+'</div></section>';
+  return h;
+}
+function renderDashIncome(){
+  if(!S.income.length)return emptyCard('No income recorded yet. Add income in Income to see the portfolio.');
+  const rows=S.income.map(i=>{const gm=conv(num(i.gross),i.freq,'month'),dm=conv(incomeDeduct(i),i.freq,'month'),nm=gm-dm,rel=num(i.rel??100);return{i,gm,dm,nm,rel,cm:nm*rel/100}});
+  const G=sumBy(rows,r=>r.gm),D=sumBy(rows,r=>r.dm),N=sumBy(rows,r=>r.nm),Cn=sumBy(rows,r=>r.cm);
+  const top=rows.slice().sort((a,b)=>b.cm-a.cm)[0],share=Cn>0?top.cm/Cn*100:0;
+  let h='<section class="stats">'+statT('Before deductions, per month',m0(G))+statT('Deductions, per month',m0(D))+statT('After deductions, per month',m0(N))+statT('Counted in budget, per month',m0(Cn))
+    +statT('Deduction rate',pct(G>0?D/G*100:0))+statT('Income sources',String(rows.length))+statT('Largest source share',pct(share),share>70&&rows.length>1?'warn':'')+statT('Yearly after deductions',m0(N*12))+'</section>';
+  const types=INCOME_TYPES.map(t=>({n:t[1],a:sumBy(rows.filter(r=>r.i.type===t[0]),r=>r.cm)})).filter(x=>x.a>0);
+  const dk={};rows.forEach(r=>(r.i.deductions||[]).filter(d=>!loanLinked(d)).forEach(d=>{const a=d.mode==='pct'?conv(num(r.i.gross)*num(d.value)/100,r.i.freq,'month'):conv(num(d.value),d.freq||r.i.freq,'month');dk[d.kind]=(dk[d.kind]||0)+a}));
+  h+='<section class="grid2"><div class="card"><h2>Counted income by type</h2><p class="small muted">Per month, after deductions and reliability</p>'+hbars(types,'--accent')+'</div><div class="card"><h2>Where deductions go</h2><p class="small muted">Per month</p>'+hbars(Object.keys(dk).map(k=>({n:k,a:dk[k]})).sort((a,b)=>b.a-a.a).slice(0,8),'--c-needs')+'</div></section>';
+  h+=`<section class="card"><h2>Income portfolio</h2><div class="scroll"><table class="ledger"><thead><tr><th>Source</th><th>Type</th><th>Before</th><th>Deductions</th><th>After</th><th>Reliability</th><th>Counted</th><th>Share</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.i.name)}</td><td>${esc((INCOME_TYPES.find(t=>t[0]===r.i.type)||['',''])[1])}</td><td class="num">${m0(r.gm)}</td><td class="num">${m0(r.dm)}</td><td class="num">${m0(r.nm)}</td><td class="num">${r.rel}%</td><td class="num">${m0(r.cm)}</td><td class="num">${pct(Cn>0?r.cm/Cn*100:0)}</td></tr>`).join('')}</tbody></table></div><p class="small muted">All figures per month.</p></section>`;
+  const notes=[];
+  if(rows.length>1&&share>70)notes.push(esc(top.i.name)+' supplies '+pct(share)+' of counted income. Losing it would hit the budget hard.');
+  const gap=N-Cn;if(gap>EPS)notes.push('Reliability settings hold back '+m0(gap)+' a month of income from the plan.');
+  if(G>0&&D/G>0.4)notes.push('Deductions take '+pct(D/G*100)+' of income before deductions. Check each one is recorded once.');
+  if(notes.length)h+='<section class="card"><h2>Worth knowing</h2>'+notes.map(n=>`<div class="note">${n}</div>`).join('')+'</section>';
+  return h;
+}
+function renderDashSpending(){
+  const v=S.settings.view,vn=VN[v],C=calc(v);
+  if(!S.expenses.length&&C.loanPay<=0)return emptyCard('No spending categories yet. Add them in Spending to see the portfolio.');
+  const items=S.expenses.map(e=>({e,plan:conv(num(e.amount),e.freq,v),sp:num(e.spent)}));
+  const spent=sumBy(items,x=>x.sp),over=items.filter(x=>x.sp>x.plan+EPS);
+  const th=C.takeHome,sh=x=>th>0?x/th*100:0;
+  let h='<section class="stats">'+statT('Planned spending, per '+vn,m0(C.planned))+statT('Spent so far this '+vn,m0(spent),spent>C.planned+EPS?'bad':'')+statT('Needs share',pct(sh(C.needs+C.loanPay)))+statT('Wants share',pct(sh(C.wants)))+statT('Savings share',pct(sh(C.savings)),sh(C.savings)<num(S.settings.savePct)?'warn':'good')
+    +statT('Categories over plan',String(over.length),over.length?'warn':'good')+statT('Planned per year',m0(C.planned*PY[v]))+statT(C.left<0?'Over budget by':'Left unallocated',m0(Math.abs(C.left)),C.left<0?'bad':'good')+'</section>';
+  const total=Math.max(th,C.loanPay+C.planned)||1,seg=[['Loans',C.loanPay,'--c-loans'],['Needs',C.needs,'--c-needs'],['Wants',C.wants,'--c-wants'],['Savings',C.savings,'--c-save'],['Left',Math.max(0,C.left),'--c-left']];
+  h+='<section class="card"><h2>Where each '+vn+' goes</h2><div class="alloc" role="img" aria-label="Budget allocation">'+seg.map(x=>`<span style="width:${(x[1]/total*100).toFixed(2)}%;background:var(${x[2]})"></span>`).join('')+'</div><div class="legend">'+seg.map(x=>`<span><i style="background:var(${x[2]})"></i>${x[0]} ${m0(x[1])}</span>`).join('')+'</div>'+ruleMeters(C)+'</section>';
+  const bk=b=>items.filter(x=>x.e.bucket===b).map(x=>({n:x.e.name,a:x.plan})).sort((a,b)=>b.a-a.a).slice(0,6);
+  h+='<section class="grid2"><div class="card"><h2>Biggest needs</h2>'+hbars(bk('needs'),'--c-needs')+'</div><div class="card"><h2>Biggest wants</h2>'+hbars(bk('wants'),'--c-wants')+'</div></section>';
+  h+=`<section class="card"><h2>Plan against spent</h2><div class="scroll"><table class="ledger"><thead><tr><th>Category</th><th>Type</th><th>Planned per ${vn}</th><th>Spent</th><th>Difference</th></tr></thead><tbody>${items.map(x=>`<tr><td>${esc(x.e.name)}</td><td>${esc(x.e.bucket)}</td><td class="num">${m2(x.plan)}</td><td class="num">${m2(x.sp)}</td><td class="num ${x.sp>x.plan+EPS?'bad':''}">${m2(x.plan-x.sp)}</td></tr>`).join('')}</tbody></table></div></section>`;
+  return h;
+}
+/* ---------- v2: lender statements ---------- */
+const STMT_PROMPT=`You are reading a loan account statement for a household budgeting app. Reply with only one JSON object:
+{"disbursed":{"date":"YYYY-MM-DD"|null,"amount":number|null},"firstDue":"YYYY-MM-DD"|null,"instalment":number|null,"closingBalance":number|null,"balanceDate":"YYYY-MM-DD"|null,"currency":string|null,
+ "payments":[{"date":"YYYY-MM-DD","amount":number}],"flags":[{"severity":"high"|"medium"|"low","text":string}]}
+Rules:
+- "payments" holds only money the borrower paid in: repayments, direct debits, salary deductions and lump sums, as positive amounts, one entry per transaction line. Exclude loan disbursements, interest charges, fees, penalties and credits that were reversed or dishonoured (mention reversals in a flag).
+- "firstDue" is the date of the first scheduled repayment if the statement or its schedule shows it. If it only shows the first repayment received, use that date and say in a flag that it was inferred.
+- "instalment" is the regular scheduled repayment amount if shown. "closingBalance" is the latest total amount owed shown, with "balanceDate" its date.
+- Convert every date to YYYY-MM-DD. If day and month order is unclear, pick the reading that keeps dates in sequence and add a flag.
+- Use null for anything not shown. Never invent or estimate figures.`;
+function mergeStmt(outs){
+  const m={disbursed:{date:null,amount:null},firstDue:null,instalment:null,closingBalance:null,balanceDate:null,payments:[],flags:[]},seen=new Set(),fs=new Set();
+  outs.forEach(o=>{if(!o||typeof o!=='object')return;
+    const d=o.disbursed;if(d&&d.date&&!m.disbursed.date)m.disbursed={date:d.date,amount:d.amount==null?null:d.amount};
+    if(o.firstDue&&(!m.firstDue||o.firstDue<m.firstDue))m.firstDue=o.firstDue;
+    if(o.instalment>0&&!m.instalment)m.instalment=o.instalment;
+    if(typeof o.closingBalance==='number'&&o.balanceDate&&(!m.balanceDate||o.balanceDate>=m.balanceDate)){m.closingBalance=o.closingBalance;m.balanceDate=o.balanceDate}
+    (Array.isArray(o.payments)?o.payments:[]).forEach(p=>{if(p&&ISO_RE.test(p.date||'')&&typeof p.amount==='number'&&p.amount>0){const k=p.date+'|'+p.amount+'|'+(seen.has(p.date+'|'+p.amount)?seen.size:'');
+      /* identical date and amount can be real (two payments), but across batches page overlap is rare, so keep all */ m.payments.push({date:p.date,amount:p.amount})}});
+    (Array.isArray(o.flags)?o.flags:[]).forEach(x=>{if(x&&typeof x.text==='string'&&!fs.has(x.text)){fs.add(x.text);m.flags.push({severity:['high','medium','low'].indexOf(x.severity)>=0?x.severity:'low',text:x.text.slice(0,300)})}})});
+  m.payments.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  return m;
+}
+async function readStatement(){
+  const st=UI.stmt;if(!st||!SAMPLE||st.status==='reading')return;
+  const ta=document.getElementById('st-text'),text=ta?ta.value.trim():'',files=st.fileObjs||[];
+  if(!files.length&&text.length<40){st.err='Add the statement pages or paste its text first.';render();return}
+  st.err='';st.status='reading';st.progress='Opening the files…';const ctl=new AbortController();st.ctl=ctl;render();
+  try{
+    const prep=await prepareFiles(files,60);
+    if(UI.stmt!==st||ctl.signal.aborted)return;
+    const mx=LIM&&LIM.images?LIM.images.maxCount:0;
+    if(prep.imgs.length&&!mx)throw {code:'images_unavailable'};
+    const textAll=(prep.texts.join('\n\n')+(text?'\n\n'+text:'')).trim(),batches=[];
+    if(prep.imgs.length)for(let k=0;k<prep.imgs.length;k+=mx)batches.push(prep.imgs.slice(k,k+mx));else batches.push([]);
+    const outs=[],nb=batches.length;
+    for(let b=0;b<nb;b++){
+      st.progress=nb>1?'Reading the statement, batch '+(b+1)+' of '+nb+'…':'Reading the statement…';render();
+      const imgs=batches[b];
+      const prompt=STMT_PROMPT+(imgs.length?'\n\nThe attached images are statement pages, in order.':'')+(nb>1?'\n\nThis is part '+(b+1)+' of '+nb+' of ONE statement. Report only what these pages show.':'')+(b===0&&textAll?'\n\nSTATEMENT TEXT (pages marked):\n'+textAll.slice(0,200000):'');
+      const o2={signal:ctl.signal,cache:false};if(imgs.length)o2.images=imgs;
+      outs.push(await SAMPLE.json(prompt,o2));
+      if(UI.stmt!==st||ctl.signal.aborted)return;
+    }
+    const R=mergeStmt(outs);
+    if(prep.capped)R.flags.push({severity:'medium',text:'Only the first 60 pages were read. Later transactions may be missing.'});
+    st.result=R;st.status='review';
+    const L=S.loans.find(x=>x.id===st.loanId),lo=R.payments.length?R.payments[0].date:null;
+    st.assume=!!(L&&lo&&ISO_RE.test(L.start||'')&&parseISO(lo)>dueAt(L,1)+10);
+    st.useStart=!!(L&&R.disbursed.date&&ISO_RE.test(R.disbursed.date)&&Math.abs(parseISO(R.disbursed.date)-parseISO(L.start))>3);
+  }catch(e){
+    if(UI.stmt!==st)return;
+    st.status='upload';st.err=(e&&e.code==='cancelled')?'':(e&&e.pdf)?'The PDF could not be opened. Try page photos or paste the text.':intakeError(e);
+  }
+  render();
+}
+function applyStatement(){
+  const st=UI.stmt,L=st&&S.loans.find(x=>x.id===st.loanId),R=st&&st.result;if(!L||!R)return;
+  if(R.firstDue&&ISO_RE.test(R.firstDue))L.firstDue=R.firstDue;
+  if(R.instalment>0)L.installment=R.instalment;
+  if(st.useStart&&R.disbursed.date)L.start=R.disbursed.date;
+  if(R.payments.length){
+    const lo=R.payments[0].date,hi=R.payments[R.payments.length-1].date;
+    L.payments=(L.payments||[]).filter(p=>p.date<lo||p.date>hi).concat(R.payments.map(p=>({id:uid(),date:p.date,amount:p.amount})));
+    L.paidUpTo=st.assume?isoOf(parseISO(lo)-1):'';
+  }
+  if(typeof R.closingBalance==='number'){L.statBal=R.closingBalance;L.statDate=R.balanceDate&&ISO_RE.test(R.balanceDate)?R.balanceDate:''}
+  UI.stmt=null;
+}
+function reconcileNote(L){
+  if(!(num(L.statBal)>0)||!ISO_RE.test(L.statDate||''))return '';
+  const m=simulate(L,parseISO(L.statDate),true);if(!m)return '';
+  const diff=m.owed-num(L.statBal),rel=Math.abs(diff)/Math.max(1,num(L.statBal))*100;
+  const t='Model balance on '+dShort(parseISO(L.statDate))+': '+m2(m.owed)+'. Lender statement: '+m2(num(L.statBal))+'. Difference: '+m2(diff)+' ('+pct(rel)+').';
+  if(Math.abs(diff)<=Math.max(5,num(L.statBal)*0.005))return '<div class="note"><b class="good">✓ Matches the lender.</b> '+t+'</div>';
+  return '<div class="note'+(rel>3?' bad':'')+'"><b>Does not match the lender.</b> '+t+' Check the first instalment date, the instalment, the payments logged or the "Paid on time up to" date. Lenders also may charge interest monthly rather than daily, and the statement may include fees not entered here.</div>';
+}
+function renderStatement(L){
+  const st=UI.stmt&&UI.stmt.loanId===L.id?UI.stmt:null;
+  let h='<details data-key="stmt" '+(isOpen('stmt',!!st||num(L.statBal)>0)?'open':'')+'><summary>Lender statement and balance check</summary><div class="inner"><p class="small muted">Enter the balance on your latest statement to check this loan against the lender, or upload the statement and Claude reads the first instalment date, the payments made and the balance.</p><div class="fields">'
+    +fld('Balance per lender statement','loans',L.id,'statBal',L.statBal,{blank0:true})+fld('Statement date','loans',L.id,'statDate',L.statDate,{t:'date'})+'</div>'+reconcileNote(L);
+  if(!SAMPLE)return h+'</div></details>';
+  if(!st)return h+'<div><button class="btn" data-act="stmt-start">Upload a statement</button></div></div></details>';
+  if(st.status==='reading')return h+'<div class="chips"><button class="btn" disabled>Reading…</button><button class="btn tiny" data-act="stmt-stop">Stop</button></div><p class="small muted">'+esc(st.progress||'')+'</p></div></details>';
+  if(st.status==='review'){
+    const R=st.result,tot=sumBy(R.payments,p=>p.amount),lo=R.payments[0],hi=R.payments[R.payments.length-1];
+    h+='<h3>What Claude found</h3><div class="kv">'
+      +'<div><span>First instalment date</span><b class="num">'+(R.firstDue?dShort(parseISO(R.firstDue)):'Not found')+'</b></div>'
+      +'<div><span>Regular instalment</span><b class="num">'+(R.instalment?m2(R.instalment):'Not found')+'</b></div>'
+      +'<div><span>Payments found</span><b class="num">'+R.payments.length+' totalling '+m2(tot)+'</b></div>'
+      +'<div><span>Payment dates</span><b class="num">'+(lo?dShort(parseISO(lo.date))+' to '+dShort(parseISO(hi.date)):'None')+'</b></div>'
+      +'<div><span>Balance on statement</span><b class="num">'+(typeof R.closingBalance==='number'?m2(R.closingBalance)+(R.balanceDate?' on '+dShort(parseISO(R.balanceDate)):''):'Not found')+'</b></div>'
+      +'<div><span>Loan paid out</span><b class="num">'+(R.disbursed.date?dShort(parseISO(R.disbursed.date))+(R.disbursed.amount?' · '+m2(R.disbursed.amount):''):'Not found')+'</b></div></div>';
+    h+=R.flags.map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
+    if(R.payments.length)h+='<details data-key="stmt-pays"><summary>Payments found ('+R.payments.length+')</summary><div class="inner"><div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>Amount</th></tr></thead><tbody>'+R.payments.map(p=>'<tr><td class="num">'+dShort(parseISO(p.date))+'</td><td class="num">'+m2(p.amount)+'</td></tr>').join('')+'</tbody></table></div></div></details>';
+    h+='<div class="chips">'+(R.payments.length&&lo?chk('Count instalments before '+dShort(parseISO(lo.date))+' as paid on time','stmt','assume',st.assume):'')+(R.disbursed.date?chk('Set the loan start date to '+dShort(parseISO(R.disbursed.date)),'stmt','useStart',st.useStart):'')+'</div>';
+    return h+'<p class="small muted">Applying replaces any logged payments inside the statement dates, sets the first instalment date and instalment, and fills the balance check. Review the loan afterwards.</p><div class="chips"><button class="btn primary" data-act="stmt-apply">Apply to this loan</button><button class="btn" data-act="stmt-cancel">Discard</button></div></div></details>';
+  }
+  const imgOK=!!(LIM&&LIM.images),acc=(imgOK?LIM.images.mediaTypes:[]).concat(['application/pdf','.pdf']).join(',');
+  h+=`<label class="fld"><span>Statement files: PDF or images, up to 60 pages</span><input type="file" id="st-files" multiple accept="${esc(acc)}"></label>`;
+  if((st.fileObjs||[]).length)h+=`<p class="small">${st.fileObjs.length} file${st.fileObjs.length>1?'s':''} ready: ${esc(st.fileObjs.map(f=>f.name).join(', '))}</p>`;
+  h+='<label class="fld"><span>Or paste the statement text</span><textarea id="st-text" data-keep="1" placeholder="Paste the statement here"></textarea></label>';
+  if(st.err)h+=`<div class="note bad">${esc(st.err)}</div>`;
+  return h+'<div class="chips"><button class="btn primary" data-act="stmt-read">Read the statement</button><button class="btn" data-act="stmt-cancel">Cancel</button></div><p class="small muted">Text PDFs are cheapest. Scanned pages are read in batches and use your Claude allowance. Nothing is kept except the figures you apply.</p></div></details>';
+}
+/* ---------- v2: income uploads (payslips, bank statements) ---------- */
+const PAYSLIP_PROMPT=`You are reading payslips for a household budgeting app. Reply with only one JSON object:
+{"payslips":[{"source":string,"type":"salary"|"property"|"business"|"other","payDate":"YYYY-MM-DD"|null,"frequency":"week"|"fortnight"|"month"|"quarter"|null,"gross":number|null,"net":number|null,"deductions":[{"label":string,"amount":number}],"employerContributions":[{"label":string,"amount":number}],"disbursements":[{"payee":string,"amount":number,"purpose":string|null}]}],"flags":[{"severity":"high"|"medium"|"low","text":string}]}
+Rules:
+- One entry per payslip. "source" is the employer or payer name only.
+- "gross" is total earnings this pay period including allowances and overtime. "net" is the amount paid to the employee.
+- "deductions" are amounts taken out of gross for THIS pay period only, as positive numbers, using the label printed on the payslip: income tax, pension or super (employee share), health or other insurance, union fees, loan or advance repayments, and so on. Leave out year-to-date columns.
+- "disbursements" lists where the pay was sent, as shown on the payslip: net pay paid into banks or other institutions, and allotments or repayments paid directly to a bank, with the bank name as "payee" and what it was for as "purpose". Never include account numbers.
+- Contributions paid by the employer on top of pay go in "employerContributions", not deductions.
+- If gross minus deductions does not equal net, add a flag naming the payslip date.
+- Do not return any personal identifiers: no employee names, ID, tax file, social security or account numbers.
+- Use null for anything not shown. Convert dates to YYYY-MM-DD. Never invent figures.`;
+const BANK_PROMPT=`You are reading a bank statement to find household income for a budgeting app. Reply with only one JSON object:
+{"credits":[{"date":"YYYY-MM-DD","amount":number,"description":string,"type":"salary"|"property"|"business"|"other"}],"flags":[{"severity":"high"|"medium"|"low","text":string}]}
+Rules:
+- "credits" holds only deposits that look like income: wages or salary, rent received, business receipts, allowances, pensions and regular support. Exclude transfers between the person's own accounts, refunds, loan disbursements, interest, and cash deposits with no clear source.
+- "description" is a short label for the payer, such as the employer or tenant agency, without account numbers. Do not include the names of private individuals unless the label is needed to tell income streams apart.
+- Amounts are positive. Convert dates to YYYY-MM-DD. Never invent figures.`;
+function normFreq(v){
+  const l=String(v||'').toLowerCase();
+  if(/fort|bi-?week|two.?week|every 2|2.?week/.test(l))return 'fortnight';
+  if(/semi|twice/.test(l))return 'fortnight';
+  if(/week/.test(l))return 'week';
+  if(/quarter/.test(l))return 'quarter';
+  if(/year|annu/.test(l))return 'year';
+  if(/month/.test(l))return 'month';
+  return null;
+}
+function mapDed(label,type){
+  const l=String(label||'').toLowerCase(),k=DED_KINDS[type]||DED_KINDS.other;
+  const pick=x=>k.indexOf(x)>=0?x:null;
+  if(/tax|paye|withhold|wht/.test(l))return pick('Income tax (PAYE)')||pick('Income tax')||pick('Income tax on rent')||pick('Tax')||String(label).slice(0,60);
+  if(/pension|super|nasfund|retire|provident|kiwisaver|401|fund/.test(l))return pick('Pension or superannuation')||pick('Superannuation or contributions')||String(label).slice(0,60);
+  if(/health|medical|insur/.test(l))return pick('Health insurance')||pick('Property insurance')||String(label).slice(0,60);
+  if(/union|professional/.test(l))return pick('Union or professional fees')||String(label).slice(0,60);
+  if(/loan|advance|repay|salary sacrifice/.test(l))return pick('Salary-deducted loan repayment')||String(label).slice(0,60);
+  return String(label||'Other deduction').slice(0,60);
+}
+const median=a=>{const b=a.slice().sort((x,y)=>x-y),n=b.length;return n?(n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2):0};
+const normKey=t=>String(t||'').toLowerCase().replace(/[0-9#*\/_.\-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,30);
+function freqFromDates(ds){
+  const d=ds.map(parseISO).sort((a,b)=>a-b);if(d.length<2)return null;
+  const gaps=[];for(let i=1;i<d.length;i++)gaps.push(d[i]-d[i-1]);
+  const g=median(gaps);return g<=9?'week':g<=17?'fortnight':g<=45?'month':g<=100?'quarter':'year';
+}
+function buildIncomeGroups(kind,outs){
+  const groups=[],singles=[],flags=[],fs=new Set();
+  outs.forEach(o=>(Array.isArray(o&&o.flags)?o.flags:[]).forEach(x=>{if(x&&typeof x.text==='string'&&!fs.has(x.text)){fs.add(x.text);flags.push({severity:['high','medium','low'].indexOf(x.severity)>=0?x.severity:'low',text:x.text.slice(0,300)})}}));
+  const types=['salary','property','business','other'];
+  if(kind==='payslip'){
+    const by={};
+    outs.forEach(o=>(Array.isArray(o&&o.payslips)?o.payslips:[]).forEach(p=>{if(!p||typeof p.gross!=='number')return;const k=normKey(p.source)||'payslip';(by[k]=by[k]||[]).push(p)}));
+    Object.keys(by).forEach(k=>{
+      const ps=by[k].sort((a,b)=>String(a.payDate||'')<String(b.payDate||'')?-1:1),last=ps[ps.length-1];
+      const fq=ps.map(p=>normFreq(p.frequency)).filter(Boolean),freq=fq.length?fq.sort((a,b)=>fq.filter(x=>x===b).length-fq.filter(x=>x===a).length)[0]:(freqFromDates(ps.map(p=>p.payDate).filter(d=>ISO_RE.test(d||'')))||'month');
+      const type=types.indexOf(last.type)>=0?last.type:'salary';
+      groups.push({id:uid(),kind:'payslip',on:true,name:String(last.source||'Salary').slice(0,60),type,freq,gross:last.gross,target:'new',
+        deds:(last.deductions||[]).filter(d=>d&&typeof d.amount==='number'&&d.amount>0).map(d=>({label:String(d.label||'').slice(0,60),amount:d.amount})),
+        disb:(last.disbursements||[]).filter(d=>d&&typeof d.amount==='number'&&d.amount>0).map(d=>({payee:String(d.payee||'').slice(0,60),amount:d.amount,purpose:String(d.purpose||'').slice(0,60)})),
+        records:ps.map(p=>({id:uid(),date:ISO_RE.test(p.payDate||'')?p.payDate:'',gross:p.gross,net:typeof p.net==='number'?p.net:null,src:'payslip',disb:(p.disbursements||[]).filter(d=>d&&typeof d.amount==='number').map(d=>({payee:String(d.payee||'').slice(0,60),amount:d.amount,purpose:String(d.purpose||'').slice(0,60)})),deds:(p.deductions||[]).filter(d=>d&&typeof d.amount==='number').map(d=>({kind:mapDed(d.label,type),label:String(d.label||'').slice(0,60),amount:d.amount}))}))});
+    });
+  }else{
+    const by={},seen=new Set();
+    outs.forEach(o=>(Array.isArray(o&&o.credits)?o.credits:[]).forEach(c=>{if(!c||!ISO_RE.test(c.date||'')||typeof c.amount!=='number'||c.amount<=0)return;const sk=c.date+'|'+c.amount+'|'+c.description;if(seen.has(sk))return;seen.add(sk);const k=normKey(c.description)||'deposit';(by[k]=by[k]||[]).push(c)}));
+    Object.keys(by).forEach(k=>{
+      const cs=by[k].sort((a,b)=>a.date<b.date?-1:1);
+      if(cs.length<2){singles.push(cs[0]);return}
+      const type=types.indexOf(cs[0].type)>=0?cs[0].type:'other',amt=median(cs.map(c=>c.amount));
+      groups.push({id:uid(),kind:'bank',on:true,name:String(cs[0].description||'Income').slice(0,60),type,freq:freqFromDates(cs.map(c=>c.date))||'month',gross:round2(amt),target:'new',deds:[],
+        records:cs.slice(-24).map(c=>({id:uid(),date:c.date,gross:null,net:c.amount,src:'bank',deds:[]}))});
+    });
+  }
+  const nm=t=>String(t||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  groups.forEach(g=>{
+    if(g.kind!=='payslip')return;
+    g.lines=[];
+    g.deds.forEach(d=>{if(isLoanText(d.label))g.lines.push({id:uid(),key:'d:'+normKey(d.label),src:'ded',label:d.label,payee:'',amount:d.amount,target:'new'})});
+    const hasD=g.lines.length>0;
+    (g.disb||[]).forEach(d=>{if(isLoanText(d.purpose))g.lines.push({id:uid(),key:'b:'+normKey(d.payee+' '+d.purpose),src:'disb',label:d.payee+' '+d.purpose,payee:d.payee,amount:d.amount,target:hasD?'none':'new'})});
+    g.lines.forEach(x=>{const m=S.loans.find(l=>(nm(l.lender)&&nm(x.payee||x.label).indexOf(nm(l.lender))>=0)||(nm(l.name)&&nm(x.label).indexOf(nm(l.name))>=0));if(m)x.target=m.id});
+  });
+  groups.forEach(g=>{const m=S.income.find(i=>nm(i.name)&&(nm(i.name)===nm(g.name)||nm(g.name).indexOf(nm(i.name))>=0||nm(i.name).indexOf(nm(g.name))>=0));if(m)g.target=m.id});
+  return {groups,singles,flags};
+}
+async function readIncomeFiles(){
+  const st=UI.inc;if(!st||!SAMPLE||st.status==='reading')return;
+  const ta=document.getElementById('inc-text'),text=ta?ta.value.trim():'',files=st.fileObjs||[],kind=st.kind||'payslip';
+  if(!files.length&&text.length<40){st.err='Add the files or paste the text first.';render();return}
+  st.err='';st.status='reading';st.progress='Opening the files…';const ctl=new AbortController();st.ctl=ctl;render();
+  try{
+    const prep=await prepareFiles(files,kind==='bank'?60:30);
+    if(UI.inc!==st||ctl.signal.aborted)return;
+    const mx=LIM&&LIM.images?LIM.images.maxCount:0;
+    if(prep.imgs.length&&!mx)throw {code:'images_unavailable'};
+    const textAll=(prep.texts.join('\n\n')+(text?'\n\n'+text:'')).trim(),batches=[];
+    if(prep.imgs.length)for(let k=0;k<prep.imgs.length;k+=mx)batches.push(prep.imgs.slice(k,k+mx));else batches.push([]);
+    const outs=[],nb=batches.length,P=kind==='bank'?BANK_PROMPT:PAYSLIP_PROMPT;
+    for(let b=0;b<nb;b++){
+      st.progress=nb>1?'Reading, batch '+(b+1)+' of '+nb+'…':'Reading…';render();
+      const imgs=batches[b];
+      const prompt=P+(imgs.length?'\n\nThe attached images are the pages, in order.':'')+(nb>1?'\n\nThis is part '+(b+1)+' of '+nb+'. Report only what these pages show.':'')+(b===0&&textAll?'\n\nTEXT (pages marked):\n'+textAll.slice(0,200000):'');
+      const o2={signal:ctl.signal,cache:false};if(imgs.length)o2.images=imgs;
+      outs.push(await SAMPLE.json(prompt,o2));
+      if(UI.inc!==st||ctl.signal.aborted)return;
+    }
+    st.result=buildIncomeGroups(kind,outs);
+    if(prep.capped)st.result.flags.push({severity:'medium',text:'Only the first '+(kind==='bank'?60:30)+' pages were read.'});
+    if(!st.result.groups.length){st.status='upload';st.err=kind==='bank'?'No repeating income deposits were found. A stream needs at least two deposits from the same payer.':'No payslips were found in these files.'}
+    else st.status='review';
+  }catch(e){
+    if(UI.inc!==st)return;
+    st.status='upload';st.err=(e&&e.code==='cancelled')?'':(e&&e.pdf)?'The PDF could not be opened. Try page photos or paste the text.':intakeError(e);
+  }
+  render();
+}
+function applyIncome(){
+  const st=UI.inc;if(!st||!st.result)return;
+  st.result.groups.filter(g=>g.on).forEach(g=>{
+    const rows=g.deds.map(d=>({id:uid(),kind:mapDed(d.label,g.type),mode:'amt',value:d.amount,freq:g.freq,_k:'d:'+normKey(d.label)}));
+    let inc=g.target!=='new'?S.income.find(i=>i.id===g.target):null;
+    if(!inc){inc={id:uid(),name:g.name,type:g.type,gross:g.gross,freq:g.freq,rel:100,deductions:rows,records:[]};S.income.push(inc)}
+    else if(g.kind==='payslip'){inc.gross=g.gross;inc.freq=g.freq;inc.type=g.type;inc.deductions=rows}
+    else if(!num(inc.gross)){inc.gross=g.gross;inc.freq=g.freq}
+    if(g.kind==='payslip'&&g.disb&&g.disb.length)inc.disbursements=g.disb;
+    (g.lines||[]).filter(x=>x.target!=='none').forEach(x=>{
+      let L=x.target!=='new'?S.loans.find(l=>l.id===x.target):null;
+      if(!L){L=newLoan({name:String(x.src==='disb'?(x.payee+' loan'):x.label).slice(0,60)||'Salary loan',lender:x.payee||'',principal:0,term:0,rate:0,installment:x.amount,freq:loanFreq(g.freq),payments:[]});S.loans.push(L)}
+      L.salaryFrom=inc.id;if(!(num(L.installment)>0))L.installment=x.amount;
+      const seenP=new Set((L.payments||[]).map(p=>p.date+'|'+p.amount+'|'+p.src));
+      g.records.forEach(r=>{
+        const e=x.src==='ded'?(r.deds||[]).find(d=>'d:'+normKey(d.label)===x.key):(r.disb||[]).find(d=>'b:'+normKey(d.payee+' '+d.purpose)===x.key);
+        if(e&&r.date&&!seenP.has(r.date+'|'+e.amount+'|salary')){L.payments=(L.payments||[]).concat([{id:uid(),date:r.date,amount:e.amount,src:'salary',incId:inc.id}])}});
+      if(x.src==='ded')(inc.deductions||[]).forEach(d=>{if(d._k===x.key)d.loanId=L.id});
+    });
+    const have=new Set((inc.records||[]).map(r=>r.date+'|'+r.net+'|'+r.src));
+    inc.records=(inc.records||[]).concat(g.records.filter(r=>!have.has(r.date+'|'+r.net+'|'+r.src))).sort((a,b)=>a.date<b.date?-1:1).slice(-60);
+  });
+  logEvent('import',st.result.groups.filter(g=>g.on).map(g=>g.name+' ('+g.records.length+' '+(g.kind==='payslip'?'payslips':'deposits')+')').join(', '),'',st.kind==='bank'?'bank statement':'payslips');
+  S.example=false;UI.inc=null;
+}
+function renderIncomeUpload(){
+  const st=UI.inc;
+  let h='<section class="card"><div class="card-head"><h2>Add income from documents</h2>'+(st?'':(SAMPLE?'<button class="btn primary tiny" data-act="inc-start">Upload payslips or a bank statement</button>':''))+'</div>';
+  if(!SAMPLE)return h+'<p class="small muted">'+(CAPS_DONE?'Reading documents needs this page to be open inside Claude.':'Checking whether document reading is available…')+'</p></section>';
+  if(!st)return h+'<p class="small muted">Upload payslips to record gross pay and every deduction, or a bank statement to find regular income. Pay records are kept so deductions can be tracked over time.</p></section>';
+  if(st.status==='reading')return h+'<div class="chips"><button class="btn" disabled>Reading…</button><button class="btn tiny" data-act="inc-stop">Stop</button></div><p class="small muted">'+esc(st.progress||'')+'</p></section>';
+  if(st.status==='review'){
+    const R=st.result,opts=[['new','Add as new income']].concat(S.income.map(i=>[i.id,'Update: '+i.name]));
+    h+='<p class="small muted">Check what was found, then apply. Payslip figures replace the amount and deductions of the income you update.</p>';
+    h+=R.flags.map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
+    R.groups.forEach(g=>{
+      const dsum=sumBy(g.deds,d=>d.amount);
+      h+=`<div class="incbox"><label class="chk"><input type="checkbox" id="f-incg-${g.id}-on" data-coll="incg" data-id="${g.id}" data-f="on" data-t="bool"${g.on?' checked':''}><span><b>${g.kind==='payslip'?'Payslips':'Bank deposits'}</b>: ${g.records.length} found</span></label><div class="row">`
+        +fld('Income name','incg',g.id,'name',g.name,{t:'text'})+fld('Type','incg',g.id,'type',g.type,{opts:INCOME_TYPES})+fld('How often','incg',g.id,'freq',g.freq,{opts:FREQ_OPTS})
+        +fld(g.kind==='payslip'?'Gross per pay':'Typical deposit (after deductions)','incg',g.id,'gross',g.gross)+fld('Save to','incg',g.id,'target',g.target,{opts:opts})+'</div>';
+      if(g.kind==='payslip'){
+        h+='<div class="small"><b>Deductions on the latest payslip</b> (total '+m2(dsum)+', net '+m2(g.gross-dsum)+'):</div>';
+        h+=g.deds.length?'<div class="chips">'+g.deds.map(d=>`<span class="pill muted">${esc(mapDed(d.label,g.type))}: ${m2(d.amount)}</span>`).join('')+'</div>':'<p class="small muted">No deductions found.</p>';
+        if(g.disb&&g.disb.length)h+='<div class="small"><b>Paid out to banks</b> (total '+m2(sumBy(g.disb,d=>d.amount))+'):</div><div class="chips">'+g.disb.map(d=>`<span class="pill muted">${esc(d.payee)}${d.purpose?' · '+esc(d.purpose):''}: ${m2(d.amount)}</span>`).join('')+'</div>';
+        if((g.lines||[]).length){
+          const lo=[['none','Not a loan (ignore)'],['new','Create a new loan']].concat(S.loans.map(l=>[l.id,'Loan: '+l.name]));
+          h+='<div class="note"><b>Loan repayments from this pay.</b> Choose the loan each belongs to. It will show in Loans with source Salary, and will not be taken off income twice.</div><div class="row">'+g.lines.map(x=>fld(x.label+': '+m2(x.amount),'incl',x.id,'target',x.target,{opts:lo})).join('')+'</div>';
+        }
+      }else h+='<p class="small muted">These are deposits after deductions, so the income is recorded without a deductions list.</p>';
+      h+='</div>';
+    });
+    if(R.singles.length)h+='<p class="small muted">Single deposits not added: '+R.singles.slice(0,6).map(c=>esc(c.description)+' '+m2(c.amount)).join(', ')+(R.singles.length>6?' and '+(R.singles.length-6)+' more':'')+'.</p>';
+    return h+'<div class="chips"><button class="btn primary" data-act="inc-apply">Apply</button><button class="btn" data-act="inc-cancel">Discard</button></div></section>';
+  }
+  const imgOK=!!(LIM&&LIM.images),acc=(imgOK?LIM.images.mediaTypes:[]).concat(['application/pdf','.pdf']).join(',');
+  h+='<div class="fields">'+fld('What are you uploading','incup','x','kind',st.kind||'payslip',{opts:[['payslip','Payslips'],['bank','Bank statement']]})+`<label class="fld"><span>Files: PDF or images</span><input type="file" id="inc-files" multiple accept="${esc(acc)}"></label></div>`;
+  if((st.fileObjs||[]).length)h+=`<p class="small">${st.fileObjs.length} file${st.fileObjs.length>1?'s':''} ready: ${esc(st.fileObjs.map(f=>f.name).join(', '))}</p>`;
+  h+='<label class="fld"><span>Or paste the text</span><textarea id="inc-text" data-keep="1" placeholder="Paste payslip or statement text"></textarea></label>';
+  if(st.err)h+=`<div class="note bad">${esc(st.err)}</div>`;
+  return h+'<div class="chips"><button class="btn primary" data-act="inc-read">Read the documents</button><button class="btn" data-act="inc-cancel">Cancel</button></div><p class="small muted">Names, ID and account numbers are not requested and nothing is kept except the figures you apply. Text PDFs are cheapest; scans are read in batches and use your Claude allowance.</p></section>';
+}
+function recordsHtml(i){
+  const rs=(i.records||[]).slice().sort((a,b)=>a.date<b.date?1:-1);if(!rs.length)return '';
+  const tot={},n=rs.filter(r=>(r.deds||[]).length).length;
+  rs.forEach(r=>(r.deds||[]).forEach(d=>{tot[d.kind]=(tot[d.kind]||0)+d.amount}));
+  let h=`<details data-key="rec-${i.id}"${isOpen('rec-'+i.id,false)?' open':''}><summary>Pay records (${rs.length})</summary><div class="inner"><div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>From</th><th>Gross</th><th>Deductions</th><th>Net</th><th></th></tr></thead><tbody>${rs.slice(0,24).map(r=>`<tr><td class="num">${r.date?dShort(parseISO(r.date)):''}</td><td>${r.src==='bank'?'Bank':'Payslip'}</td><td class="num">${r.gross==null?'':m2(r.gross)}</td><td class="num">${r.gross==null||r.net==null?'':m2(r.gross-r.net)}</td><td class="num">${r.net==null?'':m2(r.net)}</td><td><button class="btn tiny danger" data-act="del-rec:${i.id}:${r.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`;
+  if(n)h+='<div class="small"><b>Deductions recorded over '+n+' payslip'+(n>1?'s':'')+':</b></div><div class="chips">'+Object.keys(tot).sort((a,b)=>tot[b]-tot[a]).map(k=>`<span class="pill muted">${esc(k)}: ${m2(tot[k])}</span>`).join('')+'</div>';
+  const last=rs.find(r=>r.src==='payslip'&&((r.deds||[]).length||(r.disb||[]).length));
+  if(last){
+    h+='<div class="small"><b>Latest payslip, '+(last.date?dShort(parseISO(last.date)):'')+'</b></div><div class="scroll"><table class="ledger"><tbody>'
+      +(last.deds||[]).map(d=>'<tr><td>Deduction: '+esc(d.kind)+'</td><td class="num">'+m2(d.amount)+'</td></tr>').join('')
+      +(last.disb||[]).map(d=>'<tr><td>Paid to '+esc(d.payee)+(d.purpose?' ('+esc(d.purpose)+')':'')+'</td><td class="num">'+m2(d.amount)+'</td></tr>').join('')+'</tbody></table></div>';
+    const bt={};rs.forEach(r=>(r.disb||[]).forEach(d=>{const k=d.payee+(d.purpose?' · '+d.purpose:'');bt[k]=(bt[k]||0)+d.amount}));
+    if(Object.keys(bt).length)h+='<div class="small"><b>Paid out to banks over these payslips:</b></div><div class="chips">'+Object.keys(bt).sort((a,b)=>bt[b]-bt[a]).map(k=>`<span class="pill muted">${esc(k)}: ${m2(bt[k])}</span>`).join('')+'</div>';
+  }
+  return h+'</div></details>';
+}
+const isLoanText=t=>/loan|advance|repay|mortgage|hire.?purchase|credit/i.test(t||'');
+const loanFreq=f=>['week','fortnight','month','quarter'].indexOf(f)>=0?f:'month';
+function loanSource(L){
+  const inc=L.salaryFrom&&S.income.find(i=>i.id===L.salaryFrom);
+  if(inc)return 'Salary: '+inc.name;
+  return (L.payments||[]).some(p=>p.src==='salary')?'Salary':'Direct';
+}
+function loansSummary(){
+  if(!S.loans.length)return '';
+  const live=SIMS.filter(x=>x.sim),act=live.filter(x=>x.sim.active);
+  const owed=sumBy(live,x=>x.sim.owed),M=conv;
+  const per=x=>x.sim&&x.sim.active?conv(x.sim.A,x.L.freq,'month'):(!x.sim&&x.L.salaryFrom?conv(num(x.L.installment),x.L.freq,'month'):0);
+  const monthly=sumBy(SIMS,per),fromSal=sumBy(SIMS.filter(x=>loanSource(x.L).indexOf('Salary')===0),per);
+  const arrears=sumBy(live,x=>x.sim.snap.arrears),remInt=sumBy(live,x=>Math.max(0,x.sim.intFinal-x.sim.intPaid));
+  let h='<section class="card"><div class="card-head"><h2>All loans together</h2><span class="small muted">'+S.loans.length+' loan'+(S.loans.length>1?'s':'')+'</span></div><div class="stats">'
+    +statT('Total owed',m0(owed))+statT('Repayments per month',m0(monthly))+statT('Of which from salary',m0(fromSal))+statT('Paid directly',m0(monthly-fromSal))+statT('Arrears',m0(arrears),arrears>EPS?'bad':'')+statT('Interest still to pay',m0(remInt))+'</div>'
+    +'<div class="scroll"><table class="ledger"><thead><tr><th>Loan</th><th>Lender</th><th>Paid from</th><th>Owed</th><th>Instalment</th><th>Status</th></tr></thead><tbody>'
+    +SIMS.map(x=>`<tr><td><button class="chip" data-act="sel-loan:${x.L.id}">${esc(x.L.name||'Loan')}</button></td><td>${esc(x.L.lender||'')}</td><td>${esc(loanSource(x.L))}</td><td class="num">${x.sim?m2(x.sim.owed):'Terms needed'}</td><td class="num">${m2(x.sim?x.sim.A:num(x.L.installment))} ${FREQ_LABEL[x.L.freq].toLowerCase()}</td><td>${x.sim?`<span class="pill ${status_cls(x.sim.status)}">${x.sim.status}</span>`:'<span class="pill warn">Incomplete</span>'}</td></tr>`).join('')
+    +'</tbody></table></div></section>';
+  return h;
+}
+/* ---------- v2: deductions and disbursements register ---------- */
+function recRows(){
+  const D=[],B=[];
+  S.income.forEach(inc=>(inc.records||[]).forEach(r=>{
+    (r.deds||[]).forEach((d,ix)=>{const lab=d.label||d.kind,k='d:'+normKey(lab),ld=(inc.deductions||[]).find(x=>x._k===k&&x.loanId),ln=ld&&S.loans.find(l=>l.id===ld.loanId);
+      D.push({rid:r.id,ix,incId:inc.id,inc:inc.name,date:r.date||'',label:lab,kind:d.kind,amount:d.amount,gross:r.gross,src:r.src,loan:ln?ln.name:''})});
+    (r.disb||[]).forEach((d,ix)=>B.push({rid:r.id,ix,incId:inc.id,inc:inc.name,date:r.date||'',payee:d.payee,purpose:d.purpose||'',amount:d.amount}));
+  }));
+  const f=UI.rec||{},ok=x=>(f.income==null||f.income==='all'||x.incId===f.income)&&(f.year==null||f.year==='all'||x.date.slice(0,4)===f.year);
+  const dd=D.filter(x=>ok(x)&&(f.kind==null||f.kind==='all'||x.kind===f.kind)).sort((a,b)=>a.date<b.date?1:-1);
+  return {D,B,dd,bb:B.filter(ok).sort((a,b)=>a.date<b.date?1:-1)};
+}
+function recCsv(){
+  const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"',R=recRows(),out=[];
+  out.push(['Date','Income','Deduction as printed','Category','Amount','Gross on payslip','Counted in loan','Source'].map(q).join(','));
+  R.D.slice().sort((a,b)=>a.date<b.date?-1:1).forEach(x=>out.push([x.date,x.inc,x.label,x.kind,x.amount,x.gross==null?'':x.gross,x.loan,x.src].map(q).join(',')));
+  out.push('');out.push(['Date','Income','Paid to','Purpose','Amount'].map(q).join(','));
+  R.B.slice().sort((a,b)=>a.date<b.date?-1:1).forEach(x=>out.push([x.date,x.inc,x.payee,x.purpose,x.amount].map(q).join(',')));
+  out.push('');out.push(['When','Action','What','From','To'].map(q).join(','));
+  (S.log||[]).forEach(x=>out.push([x.at,x.action,x.what,x.from,x.to].map(q).join(',')));
+  return out.join('\n');
+}
+async function downloadRecords(){
+  const set=t=>{const m=document.getElementById('rec-msg');if(m)m.textContent=t};
+  if(!DL){set('Saving files needs this page to be open inside Claude.');return}
+  try{const r=await DL.save({filename:'ledgerline-deductions-'+isoOf(TODAY)+'.csv',data:recCsv()});set(r&&r.status==='saved'?'Saved.':'Sent.')}
+  catch(e){set(e&&e.code==='declined'?'Save cancelled.':'This view could not save the file.')}
+}
+function logEvent(action,what,from,to){
+  S.log=S.log||[];S.log.push({id:uid(),at:new Date().toISOString(),action,what:String(what||'').slice(0,160),from:from==null?'':String(from).slice(0,80),to:to==null?'':String(to).slice(0,80)});
+  if(S.log.length>500)S.log.splice(0,S.log.length-500);
+}
+const cellIn=(coll,id,did,f,val,t,opts)=>{
+  const at=` id="f-${coll}-${id}-${did}-${f}" aria-label="${f}" data-coll="${coll}" data-id="${id}" data-did="${did}" data-f="${f}" data-t="${t}"`;
+  if(opts)return `<select${at}>${opts.map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  return t==='num'?`<input${at} type="number" inputmode="decimal" step="any" min="0" value="${esc(val)}">`:t==='date'?`<input${at} type="date" value="${esc(val)}">`:`<input${at} type="text" value="${esc(val)}">`;
+};
+const ALL_KINDS=[...new Set([].concat.apply([],Object.keys(DED_KINDS).map(k=>DED_KINDS[k])))];
+function renderRecords(){
+  const f=UI.rec=UI.rec||{income:'all',kind:'all',year:'all'},R=recRows(),nw=UI.recNew=UI.recNew||{what:'ded',income:'',date:isoOf(TODAY),label:'',kind:'Other deduction',payee:'',purpose:'',amount:''};
+  const withRec=S.income.filter(i=>(i.records||[]).length);
+  let h='';
+  const incOpts=S.income.map(i=>[i.id,i.name]);
+  h+='<section class="card"><h2>Add a record by hand</h2><p class="small muted">Records are your history. Editing them does not change the budget; use Income for that. Every add, edit and removal is written to the change log below.</p><div class="fields">'
+    +fld('Record type','recn','x','what',nw.what,{opts:[['ded','Deduction'],['bank','Payment to a bank']]})
+    +fld('Income','recn','x','income',nw.income||(incOpts[0]||[''])[0],{opts:incOpts.length?incOpts:[['','Add an income first']]})
+    +fld('Date','recn','x','date',nw.date,{t:'date'})
+    +(nw.what==='ded'?fld('Deduction as printed','recn','x','label',nw.label,{t:'text'})+fld('Type','recn','x','kind',nw.kind,{opts:ALL_KINDS.map(k=>[k,k])}):fld('Paid to (bank)','recn','x','payee',nw.payee,{t:'text'})+fld('Purpose','recn','x','purpose',nw.purpose,{t:'text'}))
+    +fld('Amount','recn','x','amount',nw.amount,{blank0:true})+'<div class="fld"><span>&nbsp;</span><button class="btn primary" data-act="add-dr">Add record</button></div></div>'+(UI.recErr?'<div class="note bad">'+esc(UI.recErr)+'</div>':'')+'</section>';
+  if(!R.D.length&&!R.B.length)return h+'<section class="card"><h2>Records</h2><p class="muted">No records yet. Upload payslips in Income, or add one above.</p></section>'+renderLog();
+  const kinds=[...new Set(R.D.map(x=>x.kind))].sort(),years=[...new Set(R.D.concat(R.B).map(x=>x.date.slice(0,4)).filter(Boolean))].sort().reverse();
+  h+='<section class="card"><div class="card-head"><h2>Deductions register</h2><div class="chips"><button class="btn tiny" data-act="dl-rec">Save as CSV</button><span class="small muted" id="rec-msg"></span></div></div><div class="fields">'
+    +fld('Income','recf','x','income',f.income,{opts:[['all','All income']].concat(withRec.map(i=>[i.id,i.name]))})
+    +fld('Deduction type','recf','x','kind',f.kind,{opts:[['all','All types']].concat(kinds.map(k=>[k,k]))})
+    +fld('Year','recf','x','year',f.year,{opts:[['all','All years']].concat(years.map(y=>[y,y]))})+'</div>';
+  const tot=sumBy(R.dd,x=>x.amount),by={};R.dd.forEach(x=>{const b=by[x.kind]=by[x.kind]||{n:0,t:0,g:0};b.n++;b.t+=x.amount;b.g+=x.gross||0});
+  h+='<div class="stats">'+statT('Entries',String(R.dd.length))+statT('Total deducted',m2(tot))+statT('Types',String(Object.keys(by).length))+'</div>';
+  h+='<div class="scroll"><table class="ledger"><thead><tr><th>Type</th><th>Entries</th><th>Total</th><th>Average</th><th>Share of gross</th></tr></thead><tbody>'
+    +Object.keys(by).sort((a,b)=>by[b].t-by[a].t).map(k=>`<tr><td>${esc(k)}</td><td class="num">${by[k].n}</td><td class="num">${m2(by[k].t)}</td><td class="num">${m2(by[k].t/by[k].n)}</td><td class="num">${by[k].g>0?pct(by[k].t/by[k].g*100):''}</td></tr>`).join('')+'</tbody></table></div>';
+  h+='<h3>Every deduction (edit any cell)</h3><div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>Income</th><th>As printed</th><th>Type</th><th>Amount</th><th>Loan</th><th></th></tr></thead><tbody>'
+    +R.dd.slice(0,300).map(x=>`<tr><td>${cellIn('recd',x.rid,x.ix,'date',x.date,'date')}</td><td>${esc(x.inc)}</td><td>${cellIn('recd',x.rid,x.ix,'label',x.label,'text')}</td><td>${cellIn('recd',x.rid,x.ix,'kind',x.kind,'text',ALL_KINDS.indexOf(x.kind)>=0?ALL_KINDS:ALL_KINDS.concat([x.kind]))}</td><td>${cellIn('recd',x.rid,x.ix,'amount',x.amount,'num')}</td><td>${x.loan?'<span class="pill muted">'+esc(x.loan)+'</span>':''}</td><td><button class="btn tiny danger" data-act="del-dr:${x.rid}:${x.ix}">Remove</button></td></tr>`).join('')+'</tbody></table></div>'+(R.dd.length>300?'<p class="small muted">Showing the latest 300. Save as CSV for all.</p>':'')+'<p class="small muted">Changing a date moves every line of that payslip to the new date.</p></section>';
+  const bt={};R.bb.forEach(x=>{const k=x.payee+(x.purpose?' · '+x.purpose:'');bt[k]=(bt[k]||0)+x.amount});
+  h+='<section class="card"><h2>Paid out to banks</h2>';
+  h+=R.bb.length?'<div class="chips">'+Object.keys(bt).sort((a,b)=>bt[b]-bt[a]).map(k=>`<span class="pill muted">${esc(k)}: ${m2(bt[k])}</span>`).join('')+'</div><div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>Income</th><th>Paid to</th><th>Purpose</th><th>Amount</th><th></th></tr></thead><tbody>'+R.bb.slice(0,300).map(x=>`<tr><td>${cellIn('recb',x.rid,x.ix,'date',x.date,'date')}</td><td>${esc(x.inc)}</td><td>${cellIn('recb',x.rid,x.ix,'payee',x.payee,'text')}</td><td>${cellIn('recb',x.rid,x.ix,'purpose',x.purpose,'text')}</td><td>${cellIn('recb',x.rid,x.ix,'amount',x.amount,'num')}</td><td><button class="btn tiny danger" data-act="del-br:${x.rid}:${x.ix}">Remove</button></td></tr>`).join('')+'</tbody></table></div>':'<p class="muted small">No bank payments recorded.</p>';
+  return h+'</section>'+renderLog();
+}
+function renderLog(){
+  const L=(S.log||[]).slice().reverse().slice(0,150);
+  let h='<section class="card"><div class="card-head"><h2>Change log</h2><span class="small muted">Latest 150 of '+(S.log||[]).length+'</span></div>';
+  if(!L.length)return h+'<p class="muted small">Nothing logged yet.</p></section>';
+  return h+'<div class="scroll"><table class="ledger"><thead><tr><th>When</th><th>Action</th><th>What</th><th>From</th><th>To</th></tr></thead><tbody>'+L.map(x=>`<tr><td class="num">${esc(new Date(x.at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}))}</td><td>${esc(x.action)}</td><td style="text-align:left">${esc(x.what)}</td><td class="num">${esc(x.from)}</td><td class="num">${esc(x.to)}</td></tr>`).join('')+'</tbody></table></div></section>';
+}
+/* ---------- v2: savings goals ---------- */
+const GOAL_KINDS=[['school','School fees'],['birthday','Birthday or gift'],['trip','Trip or holiday'],['emergency','Emergency fund'],['home','Home or car'],['other','Other goal']];
+const goalSaved=g=>num(g.opening)+sumBy(g.contribs||[],c=>num(c.amount));
+function goalCalc(g){
+  const saved=goalSaved(g),target=num(g.target),rem=Math.max(0,target-saved),v=S.settings.view;
+  const hasDate=ISO_RE.test(g.date||''),days=hasDate?parseISO(g.date)-TODAY:null;
+  const perV=hasDate?(days>0?rem/(days/(365/PY[v])):rem):null;
+  const plan=PY[g.freq]?num(g.plan):0;
+  const projDays=plan>0&&rem>0?Math.ceil(rem/plan*365/PY[g.freq]):null;
+  const projDate=rem<=EPS?null:projDays==null?null:TODAY+projDays;
+  let status='No date set';
+  if(rem<=EPS&&target>0)status='Reached';
+  else if(hasDate){status=days<0?'Date passed':(projDate!=null&&projDate<=parseISO(g.date)?'On track':'Behind')}
+  return {saved,target,rem,pct:target>0?Math.min(100,saved/target*100):0,days,perV,plan,projDate,status};
+}
+const goalCls=s=>s==='Reached'||s==='On track'?'good':s==='Behind'||s==='Date passed'?'warn':'muted';
+function renderSavings(){
+  const v=S.settings.view,vn=VN[v],G=S.goals||[];
+  let h='<section class="card"><div class="card-head"><h2>Savings goals</h2></div><p class="small muted">Set a target and a date for school fees, a birthday, a trip or anything else. Ledgerline works out what to put aside each '+vn+' and whether your plan gets there in time.</p><div class="chips">'+GOAL_KINDS.map(k=>`<button class="chip" data-act="add-goal:${k[0]}">+ ${k[1]}</button>`).join('')+'</div></section>';
+  if(!G.length)return h;
+  const cs=G.map(goalCalc),open=cs.filter(c=>c.rem>EPS);
+  const need=sumBy(open,c=>c.perV||0),plan=sumBy(G.filter(g=>goalCalc(g).rem>EPS),g=>PY[g.freq]?conv(num(g.plan),g.freq,v):0),C=calc(v);
+  h+='<section class="stats">'+statT('Total target',m0(sumBy(cs,c=>c.target)))+statT('Saved so far',m0(sumBy(cs,c=>c.saved)))+statT('Still to save',m0(sumBy(cs,c=>c.rem)))
+    +statT('Needed per '+vn+' to hit dates',m0(need))+statT('Planned per '+vn,m0(plan),plan+EPS<need?'warn':'good')+statT('Left unallocated in budget',m0(C.left),C.left<0?'bad':'')+'</section>';
+  if(plan+EPS<need)h+='<div class="note">Your plans add up to '+m0(plan)+' a '+vn+' but the dates need '+m0(need)+'. Raise the plans, move some dates later or trim a goal.</div>';
+  G.forEach((g,ix)=>{
+    const c=cs[ix],kinds=GOAL_KINDS;
+    h+='<section class="card"><div class="card-head"><h3>'+esc(g.name||'Goal')+'</h3><span class="pill '+goalCls(c.status)+'">'+c.status+'</span></div><div class="row">'
+      +fld('Goal name','goals',g.id,'name',g.name,{t:'text'})+fld('Type','goals',g.id,'kind',g.kind||'other',{opts:kinds})+fld('Target amount','goals',g.id,'target',g.target)+fld('Needed by','goals',g.id,'date',g.date||'',{t:'date'})
+      +fld('Already saved before logging','goals',g.id,'opening',g.opening)+fld('Plan to put aside','goals',g.id,'plan',g.plan)+fld('How often','goals',g.id,'freq',g.freq,{opts:FREQ_OPTS})
+      +`<button class="btn tiny danger${armed==='goal:'+g.id?' armed':''}" data-act="del-goal:${g.id}">${armed==='goal:'+g.id?'Confirm delete':'Remove'}</button></div>`;
+    h+=`<div class="meter" role="img" aria-label="${pct(c.pct)} saved"><span style="width:${c.pct.toFixed(1)}%"></span></div><p class="small">Saved <b class="num">${m2(c.saved)}</b> of <b class="num">${m2(c.target)}</b> (${pct(c.pct)}). Still to save <b class="num">${m2(c.rem)}</b>.</p>`;
+    if(c.rem>EPS){
+      if(c.perV!=null)h+=`<p class="small">${c.days>=0?`To finish by ${dShort(parseISO(g.date))} (${c.days} days) put aside <b class="num">${m2(c.perV)}</b> each ${vn}.`:`The date passed ${-c.days} days ago. The full ${m2(c.rem)} is still needed.`}</p>`;
+      h+=c.plan>0&&c.projDate?`<p class="small">At ${m2(c.plan)} ${FREQ_LABEL[g.freq].toLowerCase()} you reach it around <b>${dShort(c.projDate)}</b>.</p>`:'<p class="small muted">Enter a plan amount to see when you reach it.</p>';
+    }
+    h+=`<label class="chk"><input type="checkbox" id="f-goals-${g.id}-inBudget" data-coll="goals" data-id="${g.id}" data-f="inBudget" data-t="bool"${g.inBudget!==false?' checked':''}><span>Count this plan in my budget as savings (do not also list it in Spending)</span></label>`;
+    const cb=(g.contribs||[]).slice().sort((a,b)=>a.date<b.date?1:-1);
+    h+=`<details data-key="gc-${g.id}"${isOpen('gc-'+g.id,false)?' open':''}><summary>Deposits (${cb.length})</summary><div class="inner"><div class="fields"><label class="fld"><span>Date</span><input id="gc-date-${g.id}" type="date" value="${isoOf(TODAY)}"></label><label class="fld"><span>Amount saved</span><input id="gc-amt-${g.id}" type="number" inputmode="decimal" step="any" min="0" value="${num(g.plan)>0?num(g.plan):''}"></label><label class="fld"><span>Note</span><input id="gc-note-${g.id}" type="text" placeholder="Optional"></label><div class="fld"><span>&nbsp;</span><button class="btn primary" data-act="add-gc:${g.id}">Log deposit</button></div></div>`
+      +(cb.length?'<div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody>'+cb.map(x=>`<tr><td>${cellIn('gc',g.id,x.id,'date',x.date,'date')}</td><td>${cellIn('gc',g.id,x.id,'amount',x.amount,'num')}</td><td>${cellIn('gc',g.id,x.id,'note',x.note||'','text')}</td><td><button class="btn tiny danger" data-act="del-gc:${g.id}:${x.id}">Remove</button></td></tr>`).join('')+'</tbody></table></div>':'<p class="small muted">No deposits logged yet.</p>')+'</div></details></section>';
+  });
+  return h;
+}
+function dashGoalsCard(){
+  const v=S.settings.view,vn=VN[v],cs=S.goals.map(goalCalc);
+  return '<section class="card"><div class="card-head"><h2>Savings goals</h2><button class="btn tiny" data-act="tab:savings">Open savings</button></div>'
+    +S.goals.map((g,i)=>{const c=cs[i];return `<div class="fld"><span>${esc(g.name)}: ${m0(c.saved)} of ${m0(c.target)} (${pct(c.pct)})${g.date?' by '+dShort(parseISO(g.date)):''} · <b class="${goalCls(c.status)}">${c.status}</b></span><div class="meter"><span style="width:${c.pct.toFixed(1)}%"></span></div></div>`}).join('')+'</section>';
+}
+function renderDashSavings(){
+  const G=S.goals||[];
+  if(!G.length)return emptyCard('No savings goals yet. Add one in Savings to see progress here.');
+  const v=S.settings.view,vn=VN[v],cs=G.map(goalCalc),C=calc(v),open=cs.filter(c=>c.rem>EPS);
+  const need=sumBy(open,c=>c.perV||0),plan=sumBy(G.filter((g,i)=>cs[i].rem>EPS),g=>PY[g.freq]?conv(num(g.plan),g.freq,v):0);
+  let h='<section class="stats">'+statT('Goals',String(G.length))+statT('Total target',m0(sumBy(cs,c=>c.target)))+statT('Saved so far',m0(sumBy(cs,c=>c.saved)))+statT('Overall progress',pct(sumBy(cs,c=>c.target)>0?sumBy(cs,c=>c.saved)/sumBy(cs,c=>c.target)*100:0))
+    +statT('Needed per '+vn,m0(need))+statT('Planned per '+vn,m0(plan),plan+EPS<need?'warn':'good')+statT('Goals behind',String(cs.filter(c=>c.status==='Behind'||c.status==='Date passed').length),cs.some(c=>c.status==='Behind'||c.status==='Date passed')?'warn':'good')+statT('Savings rate',pct(C.takeHome>0?C.savings/C.takeHome*100:0))+'</section>';
+  h+='<section class="grid2"><div class="card"><h2>Progress by goal</h2>'+G.map((g,i)=>`<div class="fld"><span>${esc(g.name)}: ${pct(cs[i].pct)}</span><div class="meter"><span style="width:${cs[i].pct.toFixed(1)}%"></span></div></div>`).join('')+'</div>'
+    +'<div class="card"><h2>Still to save</h2>'+hbars(G.map((g,i)=>({n:g.name,a:cs[i].rem})).sort((a,b)=>b.a-a.a),'--c-save')+'</div></section>';
+  const mo={};G.forEach(g=>(g.contribs||[]).forEach(x=>{const k=(x.date||'').slice(0,7);if(k)mo[k]=(mo[k]||0)+num(x.amount)}));
+  const mk=Object.keys(mo).sort().slice(-12);
+  h+='<section class="card"><h2>Deposits by month</h2>'+(mk.length?hbars(mk.map(k=>({n:new Date(k+'-01T00:00:00Z').toLocaleDateString('en',{month:'short',year:'numeric',timeZone:'UTC'}),a:mo[k]})),'--c-save'):'<p class="muted small">No deposits logged yet.</p>')+'</section>';
+  h+=`<section class="card"><h2>Goal timeline</h2><div class="scroll"><table class="ledger"><thead><tr><th>Goal</th><th>Target</th><th>Saved</th><th>Needed by</th><th>Needed per ${vn}</th><th>Plan</th><th>Reached around</th><th>Status</th></tr></thead><tbody>${G.map((g,i)=>{const c=cs[i];return `<tr><td>${esc(g.name)}</td><td class="num">${m0(c.target)}</td><td class="num">${m0(c.saved)}</td><td class="num">${g.date?dShort(parseISO(g.date)):''}</td><td class="num">${c.rem>EPS&&c.perV!=null?m0(c.perV):''}</td><td class="num">${c.plan>0?m0(c.plan)+' '+FREQ_LABEL[g.freq].toLowerCase():''}</td><td class="num">${c.projDate?dShort(c.projDate):''}</td><td><span class="pill ${goalCls(c.status)}">${c.status}</span></td></tr>`}).join('')}</tbody></table></div></section>`;
+  return h;
+}
+/* ---------- v2: reports ---------- */
+const FILE_CSS="body{font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;color:#10201e;background:#fff;margin:0;padding:24px 16px}.report{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:18px}h1{font-size:1.7rem;margin:0}h2{font-size:1.15rem;margin:0;border-bottom:1px solid #d3dddb;padding-bottom:6px}h3{font-size:1rem;margin:0}p{margin:0}.muted{color:#586967}.small{font-size:.85rem}.scroll{overflow-x:auto}.ledger{width:100%;border-collapse:collapse;font-size:.9rem}.ledger th,.ledger td{padding:6px 8px;text-align:right;border-bottom:1px solid #d3dddb}.ledger th:first-child,.ledger td:first-child{text-align:left}.ledger th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#586967}.num{font-variant-numeric:tabular-nums}.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:4px 24px;font-size:.9rem}.kv div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #d3dddb;padding:4px 0}.note{border-left:3px solid #9a5a08;background:#f1f5f4;padding:8px 12px}.note.bad{border-left-color:#b0281f}.pill{font-size:.75rem;font-weight:600;border:1px solid currentColor;border-radius:99px;padding:1px 8px}.bad{color:#b0281f}.warn{color:#9a5a08}.good{color:#1b7a47}.finding{border:1px solid #d3dddb;border-radius:8px;padding:10px 12px;margin:6px 0}";
+function reportBody(){
+  const R=S.settings.rep||{},v=S.settings.view,vn=VN[v],cs=VIEWS.map(x=>calc(x[0])),C=calc(v),M=calc('month'),live=SIMS.filter(x=>x.sim);
+  const T=(head,rows)=>`<div class="scroll"><table class="ledger"><thead><tr>${head.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td class="${i?'num':''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const kv=a=>'<div class="kv">'+a.map(x=>`<div><span>${esc(x[0])}</span><b class="num">${x[1]}</b></div>`).join('')+'</div>';
+  let h=`<div><h1>${esc(R.title||'Household finance report')}</h1><p class="muted">${R.name?'Prepared for '+esc(R.name)+' · ':''}${dShort(TODAY)} · amounts in ${esc(S.settings.currency)}${S.example?' · EXAMPLE FIGURES':''}</p></div>`;
+  if(repOn('summary')){
+    const owed=live.reduce((t,x)=>t+x.sim.owed,0),dti=M.gross>0?M.loanPay/M.gross*100:null;
+    h+='<h2>Summary</h2>'+T(['','Weekly','Fortnightly','Monthly'],[['Take-home counted'].concat(cs.map(c=>m2(c.takeHome))),['Loan repayments'].concat(cs.map(c=>m2(c.loanPay))),['Home budget'].concat(cs.map(c=>m2(c.home))),['Needs'].concat(cs.map(c=>m2(c.needs))),['Wants'].concat(cs.map(c=>m2(c.wants))),['Savings'].concat(cs.map(c=>m2(c.savings))),['Left unallocated'].concat(cs.map(c=>m2(c.left)))])
+      +kv([['Total owed on loans',m2(owed)],['Loan repayments to income',dti==null?'n/a':pct(dti)],['Savings rate',pct(C.takeHome>0?C.savings/C.takeHome*100:0)],['People in household',String(S.settings.household||1)]]);
+  }
+  if(repOn('income')){
+    h+='<h2>Income and deductions</h2>'+T(['Source','Type','Before deductions','Deductions','Net','How often','Reliability'],S.income.map(i=>[esc(i.name),esc((INCOME_TYPES.find(t=>t[0]===i.type)||['',''])[1]),m2(num(i.gross)),m2(incomeDeduct(i)),m2(incomeNet(i)),FREQ_LABEL[i.freq],num(i.rel??100)+'%']));
+    S.income.filter(i=>(i.deductions||[]).length).forEach(i=>{h+=`<p class="small"><b>${esc(i.name)}:</b> ${(i.deductions||[]).map(d=>esc(d.kind)+' '+(d.mode==='pct'?num(d.value)+'%':m2(num(d.value))+' '+FREQ_LABEL[d.freq||i.freq].toLowerCase())).join('; ')}</p>`});
+  }
+  if(repOn('spending'))h+=`<h2>Spending plan</h2>`+T(['Category','Type','Amount','How often','Per '+vn,'Spent this '+vn],S.expenses.map(e=>[esc(e.name),esc(e.bucket),m2(num(e.amount)),FREQ_LABEL[e.freq],m2(conv(num(e.amount),e.freq,v)),m2(num(e.spent))]));
+  if(repOn('loans')&&live.length)h+='<h2>Loans</h2>'+T(['Loan','Lender','Status','Owed today','Instalment','Payoff','Real yearly cost'],live.map(x=>{const e=effectiveAPR(x.L);return [esc(x.L.name),esc(x.L.lender||''),x.sim.status,m2(x.sim.owed),m2(x.sim.A)+' '+FREQ_LABEL[x.L.freq].toLowerCase(),x.sim.payoff?dShort(x.sim.payoff):'Not reached',e==null?'n/a':pct(e)]}));
+  if(repOn('loandetail'))live.forEach(x=>{
+    const L=x.L,s=x.sim,sn=s.snap,e=effectiveAPR(L);
+    h+=`<h3>${esc(L.name)}${L.lender?' · '+esc(L.lender):''}</h3>`+kv([['Amount borrowed',m2(L.principal)],['Method and rate',(L.method==='flat'?'Flat ':'Reducing ')+pct(num(L.rate))],['Instalments',L.term+' '+FREQ_LABEL[L.freq].toLowerCase()],['Instalment',m2(s.A)],['Start date',dShort(parseISO(L.start))],['Real yearly cost',e==null?'n/a':pct(e)],['Owed today',m2(s.owed)],['Loan balance',m2(sn.P+sn.I)],['Penalties and fees owed',m2(sn.F)],['Arrears',m2(sn.arrears)],['Interest paid',m2(s.intPaid)],['Interest still to pay',m2(Math.max(0,s.intFinal-s.intPaid))],['Late fees charged',m2(sn.feeAssessed)+' ('+sn.lateCount+')'],['Default penalty accrued',m2(sn.defAccrued)],['Settlement quote today',m2(s.settle)],['Projected payoff',s.payoff?dShort(s.payoff):'Not reached']]);
+    const ps=(L.payments||[]).slice().sort((a,b)=>a.date<b.date?1:-1).slice(0,12);
+    if(ps.length)h+='<p class="small"><b>Latest payments:</b> '+ps.map(p=>dShort(parseISO(p.date))+' '+m2(num(p.amount))).join(' · ')+'</p>';
+    if(L.contract&&(L.contract.flags||[]).length)h+=(L.contract.flags||[]).map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
+  });
+  if(repOn('schedule'))live.forEach(x=>{h+=`<h2>Repayment schedule: ${esc(x.L.name)}</h2>`+T(['#','Due','Payment','Interest','Principal','Balance'],schedule(x.L).map(r=>[String(r.i),dShort(r.due),m2(r.pay),m2(r.int),m2(r.prin),m2(r.bal)]))});
+  if(repOn('savings')&&(S.goals||[]).length){
+    const cs=S.goals.map(goalCalc);
+    h+='<h2>Savings goals</h2>'+kv([['Total target',m2(sumBy(cs,c=>c.target))],['Saved so far',m2(sumBy(cs,c=>c.saved))],['Still to save',m2(sumBy(cs,c=>c.rem))],['Needed per '+vn+' to hit dates',m2(sumBy(cs.filter(c=>c.rem>EPS),c=>c.perV||0))]])
+      +T(['Goal','Target','Saved','Progress','Needed by','Needed per '+vn,'Plan','Reached around','Status'],S.goals.map((g,i)=>{const c=cs[i];return [esc(g.name),m2(c.target),m2(c.saved),pct(c.pct),g.date?dShort(parseISO(g.date)):'',c.rem>EPS&&c.perV!=null?m2(c.perV):'',c.plan>0?m2(c.plan)+' '+FREQ_LABEL[g.freq].toLowerCase():'',c.projDate?dShort(c.projDate):'',c.status]}));
+  }
+  if(repOn('ai')){
+    const ids=Object.keys(AGENTS).filter(id=>aiStore()[id]);
+    if(ids.length){h+='<h2>Adviser findings</h2>';ids.forEach(id=>{const d=aiStore()[id].data;h+=`<h3>${esc(AGENTS[id].name)} · ${esc(aiStore()[id].at)}</h3><p>${esc(d.headline)}</p>`+d.findings.map(f=>`<div class="finding"><b>${esc((sevMap[f.severity]||sevMap.low)[0])}: ${esc(f.title)}</b><div>${esc(f.detail)}</div>${f.action?'<div><b>Do this:</b> '+esc(f.action)+'</div>':''}</div>`).join('')});h+='<p class="small muted">Adviser findings are general guidance, not licensed financial advice.</p>'}
+  }
+  return h+'<p class="small muted">Figures are estimates built from the terms entered. A lender statement and the contract decide the amount owed.</p>';
+}
+function reportFile(){const R=S.settings.rep||{};return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(R.title||'Household finance report')}</title><style>${FILE_CSS}</style></head><body><article class="report">${reportBody()}</article></body></html>`}
+function csvAll(){
+  const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"',line=a=>a.map(q).join(','),v=S.settings.view,out=[];
+  out.push(line(['Income','Type','Before deductions','Deductions','Net','How often','Reliability %','Net counted per '+v]));
+  S.income.forEach(i=>out.push(line([i.name,i.type,num(i.gross),round2(incomeDeduct(i)),round2(incomeNet(i)),i.freq,num(i.rel??100),round2(conv(incomeNet(i),i.freq,v)*num(i.rel??100)/100)])));
+  out.push('');out.push(line(['Deduction from','Kind','Entered as','Value','How often']));
+  S.income.forEach(i=>(i.deductions||[]).forEach(d=>out.push(line([i.name,d.kind,d.mode==='pct'?'percent':'amount',num(d.value),d.mode==='pct'?'':(d.freq||i.freq)]))));
+  out.push('');out.push(line(['Spending category','Type','Amount','How often','Per '+v,'Spent this '+v]));
+  S.expenses.forEach(e=>out.push(line([e.name,e.bucket,num(e.amount),e.freq,round2(conv(num(e.amount),e.freq,v)),num(e.spent)])));
+  out.push('');out.push(line(['Loan','Lender','Status','Owed today','Loan balance','Penalties and fees owed','Arrears','Instalment','How often','Next due','Projected payoff','Interest paid','Interest still to pay','Real yearly cost %']));
+  SIMS.forEach(x=>{const s=x.sim;if(!s)return;const e=effectiveAPR(x.L);out.push(line([x.L.name,x.L.lender,s.status,round2(s.owed),round2(s.snap.P+s.snap.I),round2(s.snap.F),round2(s.snap.arrears),s.A,x.L.freq,s.nextDue?isoOf(s.nextDue):'',s.payoff?isoOf(s.payoff):'',round2(s.intPaid),round2(Math.max(0,s.intFinal-s.intPaid)),e==null?'':round2(e)]))});
+  out.push('');out.push(line(['Loan payments','Date','Amount']));
+  S.loans.forEach(L=>(L.payments||[]).forEach(p=>out.push(line([L.name,p.date,num(p.amount)]))));
+  out.push('');out.push(line(['Savings goal','Type','Target','Saved','Needed by','Plan','How often','Status']));
+  (S.goals||[]).forEach(g=>{const c=goalCalc(g);out.push(line([g.name,g.kind,num(g.target),round2(c.saved),g.date,num(g.plan),g.freq,c.status]))});
+  out.push('');out.push(line(['Savings deposits','Date','Amount','Note']));
+  (S.goals||[]).forEach(g=>(g.contribs||[]).forEach(x=>out.push(line([g.name,x.date,num(x.amount),x.note]))));
+  return out.join('\n');
+}
+async function downloadReport(kind){
+  const set=t=>{const m=document.getElementById('dl-msg');if(m)m.textContent=t};
+  if(!DL){set('Saving files needs this page to be open inside Claude.');return}
+  const stamp=isoOf(TODAY);
+  try{
+    const r=kind==='html'?await DL.save({filename:'ledgerline-report-'+stamp+'.html',data:reportFile()}):await DL.save({filename:'ledgerline-data-'+stamp+'.csv',data:csvAll()});
+    set(r&&r.status==='saved'?'Saved.':'Sent.');
+  }catch(e){set(e&&e.code==='declined'?'Save cancelled.':'This view could not save the file.')}
+}
+function renderReports(){
+  const R=S.settings.rep||{};
+  let h='<section class="card"><h2>Custom report</h2><p class="small muted">Choose what goes in. The preview below updates as you change it, and you can save it as a file to share with an adviser, lender or family member.</p><div class="fields">'
+    +fld('Report title','rep','x','title',R.title||'Household finance report',{t:'text'})+fld('Prepared for','rep','x','name',R.name||'',{t:'text'})+'</div><div class="chips">'
+    +[['summary','Summary'],['income','Income and deductions'],['spending','Spending plan'],['loans','Loans overview'],['loandetail','Each loan in detail'],['schedule','Repayment schedules'],['savings','Savings goals'],['ai','Adviser findings']].map(x=>chk(x[1],'repsec',x[0],repOn(x[0]))).join('')+'</div>';
+  h+=DL?'<div class="chips"><button class="btn primary" data-act="dl-html">Save report (.html)</button><button class="btn" data-act="dl-csv">Save data (.csv)</button><span class="small muted" id="dl-msg"></span></div>':'<p class="small muted">Saving files needs this page to be open inside Claude. The preview still works.</p>';
+  return h+'</section><article class="report">'+reportBody()+'</article>';
+}
+
+/* ---------- v2: AI advisers ---------- */
+const AGENT_RULES=`You are an adviser inside a household budgeting app called Ledgerline. The household's figures are below in {CUR}.
+Rules:
+- Use only the data given and the results of your tools. Never invent figures, dates, rates or rules. Do loan arithmetic with the tools, not in your head.
+- Write for an ordinary household member: plain words, specific amounts and dates, short sentences.
+- If the data looks like example figures (example_data is true) or is clearly incomplete, say so.
+- This is general guidance, not licensed financial advice. For large decisions, or if the household is in arrears or default, say they should talk to their lender or an independent adviser.
+- Do not recommend specific investment products. Be careful about suggesting new borrowing to repay debt.`;
+const OUTPUT_SPEC=`Reply with only JSON: {"headline": string (one sentence), "findings": [{"severity": "high"|"medium"|"low"|"good", "title": string, "detail": string (at most two sentences, with figures), "action": string (one concrete step, or "")}] (3 to 6 items, most important first), "this_week": [string] (up to 3 short actions)}`;
+const AGENTS={
+  coach:{name:'Budget coach',blurb:'Checks your plan against your targets and finds where money leaks.',role:'a practical household budget coach',
+    task:'Review the budget against the household targets. Find the biggest leaks, categories that look unrealistic for the household size, any shortfall or surplus, and whether savings and an emergency fund are adequate. Suggest realistic changes with amounts per month.'},
+  debt:{name:'Debt strategist',blurb:'Chooses a payoff order and an extra payment you can afford, and spots penalty risk.',role:'a careful debt-repayment strategist',
+    task:'Review all loans. Deal with arrears and penalties first. Then use compare_payoff_strategies and what_if_extra_payment to recommend a payoff order and an extra monthly amount the budget can afford, based on the left-over figure; if nothing is left over, say what to trim first. Explain that paying a flat-rate loan early may not cut its interest unless the contract gives a rebate.'},
+  contract:{name:'Contract reviewer',blurb:'Compares the real yearly cost of each loan and flags terms to question.',role:'a consumer-credit contract reviewer',
+    task:'Review each loan\'s terms. Compare the real yearly cost with the quoted rate, and look at fees, late fees and default penalties relative to the instalment, the early settlement fee and any contract_flags. Rank the loans from most to least costly, say what to ask each lender, and note anything that could trap the household. If there are no loans, say so in the headline.'}
+};
+function snapshot(){
+  const M=calc('month');
+  return {today:isoOf(TODAY),currency:S.settings.currency,household_size:S.settings.household,example_data:!!S.example,
+    monthly:{gross_income:round2(M.gross),take_home_counted:round2(M.takeHome),loan_repayments:round2(M.loanPay),home_budget_after_loans:round2(M.home),needs:round2(M.needs),wants:round2(M.wants),savings:round2(M.savings),left_unallocated:round2(M.left)},
+    targets_pct:{needs_and_loans:S.settings.needsPct,wants:S.settings.wantsPct,savings:S.settings.savePct},
+    income:S.income.map(i=>({name:i.name,type:i.type,net_monthly:round2(conv(incomeNet(i),i.freq,'month')),reliability_pct:num(i.rel??100),deductions:(i.deductions||[]).map(d=>d.kind)})),
+    spending:S.expenses.map(e=>({name:e.name,type:e.bucket,monthly_planned:round2(conv(num(e.amount),e.freq,'month')),spent_this_period:num(e.spent)})),
+    savings_goals:(S.goals||[]).map(g=>({name:g.name,target:g.target,saved:round2(goalSaved(g)),target_date:g.date,planned:g.plan,frequency:g.freq})),
+    loans:SIMS.filter(x=>x.sim).map(({L,sim})=>{const e=effectiveAPR(L);return {name:L.name,lender:L.lender,status:sim.status,amount_borrowed:L.principal,method:L.method,quoted_rate_pct:L.rate,real_yearly_cost_pct:e==null?null:round2(e),instalment:sim.A,frequency:L.freq,instalments:L.term,start:L.start,owed_today:round2(sim.owed),loan_balance:round2(sim.snap.P+sim.snap.I),penalties_and_fees_owed:round2(sim.snap.F),arrears:round2(sim.snap.arrears),days_overdue:sim.snap.daysOver,next_due:sim.nextDue?isoOf(sim.nextDue):null,projected_payoff:sim.payoff?isoOf(sim.payoff):null,interest_paid:round2(sim.intPaid),interest_remaining:round2(Math.max(0,sim.intFinal-sim.intPaid)),late_fees_charged:round2(sim.snap.feeAssessed),default_penalty_accrued:round2(sim.snap.defAccrued),upfront_fee:L.upfrontFee,late_fee_fixed:L.lateFixed,late_fee_pct_of_instalment:L.latePct,grace_days:L.grace,default_after_days:L.defaultDays,default_penalty_rate_pct:L.defaultRate,early_settlement_fee_pct:L.earlyPct,contract_flags:(L.contract&&L.contract.flags?L.contract.flags.map(f=>f.text):[])}})};
+}
+function findLoan(name){const q=String(name||'').toLowerCase(),a=SIMS.filter(x=>x.sim);return a.find(x=>x.L.name.toLowerCase()===q)||a.find(x=>x.L.name.toLowerCase().indexOf(q)>=0)}
+function whatIf(i){
+  const x=findLoan(i.loan_name);
+  if(!x)throw new Error('No loan with that name. Loans: '+SIMS.filter(y=>y.sim).map(y=>y.L.name).join(', '));
+  const extra=Math.max(0,num(i.extra_per_instalment)),base=x.sim,alt=simulate(x.L,TODAY,true,extra);
+  const rem=s=>({payoff:s.payoff?isoOf(s.payoff):null,interest_remaining:round2(Math.max(0,s.intFinal-s.intPaid)),cash_still_to_pay:round2(s.fin.paidTotal-s.snap.paidTotal)});
+  const a=rem(base),b=rem(alt);
+  return {loan:x.L.name,extra_per_instalment:extra,instalment_frequency:x.L.freq,current_plan:a,with_extra:b,months_saved:base.payoff&&alt.payoff?Math.round((base.payoff-alt.payoff)/30.44):null,interest_saved:round2(a.interest_remaining-b.interest_remaining),
+    note:x.L.method==='flat'?'Flat-rate loan: this model keeps the full flat interest, so paying early frees cash sooner but does not cut interest unless the contract gives a rebate.':'Assumes any arrears are cleared at the next due date and later payments are on time.'};
+}
+function strategyRun(order,Xm){
+  const live=order.filter(x=>x.sim&&x.sim.active),done=[],out=[];let totInt=0,last=TODAY;
+  live.forEach((x,idx)=>{
+    const prev=idx?done[idx-1].day:0;
+    const extra=d=>{if(idx&&d<prev)return 0;let m=Xm;done.forEach(p=>{if(d>=p.day)m+=p.A*PY[p.freq]/12});return m*12/PY[x.L.freq]};
+    const s=simulate(x.L,TODAY,true,extra),day=s.payoff||TODAY+365*60;
+    done.push({day,A:x.sim.A,freq:x.L.freq});totInt+=Math.max(0,s.intFinal-s.intPaid);last=Math.max(last,day);
+    out.push({loan:x.L.name,paid_off:s.payoff?isoOf(s.payoff):'not within 60 years'});
+  });
+  return {order:out,debt_free:live.length?isoOf(last):null,total_interest_remaining:round2(totInt)};
+}
+function compareStrategies(Xm){
+  const live=SIMS.filter(x=>x.sim&&x.sim.active);
+  if(!live.length)throw new Error('There are no active loans.');
+  const ava=live.slice().sort((a,b)=>(effectiveAPR(b.L)||num(b.L.rate))-(effectiveAPR(a.L)||num(a.L.rate)));
+  const sno=live.slice().sort((a,b)=>a.sim.owed-b.sim.owed);
+  const base={debt_free:isoOf(Math.max.apply(null,live.map(x=>x.sim.payoff||TODAY+365*60))),total_interest_remaining:round2(live.reduce((t,x)=>t+Math.max(0,x.sim.intFinal-x.sim.intPaid),0))};
+  return {extra_per_month:Xm,current_plan:base,avalanche_highest_real_cost_first:strategyRun(ava,Xm),snowball_smallest_balance_first:strategyRun(sno,Xm),
+    note:'The extra amount goes to one loan at a time; when a loan is cleared its instalment rolls into the next. Flat-rate loans keep their full interest in this model.'};
+}
+function makeTools(onNote){
+  const note=t=>{if(onNote)onNote(t)};
+  return [
+    {name:'what_if_extra_payment',description:'Simulates paying an extra amount on every instalment of ONE loan from now on. Returns payoff date, months saved, interest saved and cash still to pay, versus the current plan. Use for questions about paying one loan off sooner.',
+      inputSchema:{type:'object',properties:{loan_name:{type:'string',description:'Name of the loan as in the data'},extra_per_instalment:{type:'number',description:'Extra amount paid with each instalment, in the budget currency'}},required:['loan_name','extra_per_instalment']},
+      execute:i=>{note('Running a what-if on '+String(i.loan_name||'a loan')+'…');return whatIf(i)}},
+    {name:'compare_payoff_strategies',description:'Compares clearing loans highest real cost first (avalanche) with smallest balance first (snowball) when an extra monthly amount is put toward debt, and shows the current plan. Returns debt-free date and total interest remaining for each.',
+      inputSchema:{type:'object',properties:{extra_per_month:{type:'number',description:'Extra amount per month available for debt'}},required:['extra_per_month']},
+      execute:i=>{note('Comparing payoff orders…');return compareStrategies(Math.max(0,num(i.extra_per_month)))}}
+  ];
+}
+function agentPreamble(){
+  return AGENT_RULES.replace('{CUR}',S.settings.currency)+'\n\nHOUSEHOLD DATA (JSON):\n'+JSON.stringify(snapshot())+((LIM&&LIM.tools)?'':'\n\nNo calculation tools are available in this session, so do not state what-if payoff dates or interest savings.');
+}
+function advisorError(e){
+  const c=e&&e.code;
+  if(c==='not_granted'||c==='sampling_disabled')return 'Claude was not allowed to run. Allow it when asked to use the advisers.';
+  if(c==='rate_limited')return 'Too many requests, or your Claude allowance is used up for now. Try again later.';
+  if(c==='session_expired')return 'Sign in to Claude again, then try once more.';
+  if(c==='invalid_json')return 'The adviser could not format its answer. Try again.';
+  if(c==='refused')return 'The adviser declined this request.';
+  return 'The adviser stopped before finishing. Try again.';
+}
+function cleanAgent(o){
+  o=o&&typeof o==='object'?o:{};
+  const s=(v,m)=>typeof v==='string'?v.slice(0,m):'';
+  return {headline:s(o.headline,300)||'Review complete.',
+    findings:(Array.isArray(o.findings)?o.findings:[]).slice(0,8).map(f=>({severity:['high','medium','low','good'].indexOf(f&&f.severity)>=0?f.severity:'low',title:s(f&&f.title,140),detail:s(f&&f.detail,500),action:s(f&&f.action,300)})).filter(f=>f.title),
+    this_week:(Array.isArray(o.this_week)?o.this_week:[]).slice(0,3).map(x=>s(x,200)).filter(Boolean)};
+}
+async function runAgent(id){
+  const spec=AGENTS[id];
+  if(!SAMPLE||!spec||(UI.agents[id]&&UI.agents[id].status==='running'))return;
+  const ctl=new AbortController(),st=UI.agents[id]={status:'running',ctl,note:'Reading your budget and loans…',err:''};
+  render();
+  const prompt=agentPreamble()+'\n\nYOUR ROLE: '+spec.role+'\n\nTASK: '+spec.task+'\n\n'+OUTPUT_SPEC;
+  const opts={signal:ctl.signal,cache:false,modelTier:'default'};
+  if(LIM&&LIM.tools)opts.tools=makeTools(t=>{st.note=t;const el=document.getElementById('ag-note-'+id);if(el)el.textContent=t});
+  try{
+    const out=await SAMPLE.json(prompt,opts);
+    aiStore()[id]={at:isoOf(TODAY),data:cleanAgent(out)};save();st.status='done';
+  }catch(e){st.status=(e&&e.code==='cancelled')?'idle':'error';st.err=(e&&e.code==='cancelled')?'':advisorError(e)}
+  render();
+}
+async function sendChat(){
+  if(!SAMPLE||UI.chatBusy)return;
+  const ta=document.getElementById('chat-in'),msg=ta?ta.value.trim():'';
+  if(!msg)return;
+  ta.value='';UI.chat.push({role:'user',content:msg});UI.chatBusy=true;UI.chatErr='';
+  const ctl=new AbortController();UI.chatCtl=ctl;render();
+  const turns=[{role:'user',content:agentPreamble()+'\n\nAnswer the household member\'s questions in short plain paragraphs. Use the tools for any payoff or interest figures.'}].concat(UI.chat.slice(-12));
+  const opts={cache:false,signal:ctl.signal,onText:u=>{const el=document.getElementById('chat-live');if(el)el.textContent=u.text}};
+  if(LIM&&LIM.tools)opts.tools=makeTools();
+  try{const r=await SAMPLE(turns,opts);UI.chat.push({role:'assistant',content:r.text})}
+  catch(e){
+    if(e&&e.text&&e.code!=='refused')UI.chat.push({role:'assistant',content:e.text+'\n\n(interrupted)'});
+    if(!(e&&e.code==='cancelled'))UI.chatErr=advisorError(e);
+  }
+  UI.chatBusy=false;render();
+}
+function agentResult(s){
+  const d=s.data;
+  let h=`<p><b>${esc(d.headline)}</b></p><p class="small muted">Reviewed ${esc(s.at)}</p>`;
+  h+=d.findings.map(f=>`<div class="finding">${sevPill(f.severity)}<b>${esc(f.title)}</b><span>${esc(f.detail)}</span>${f.action?`<span class="act"><b>Do this:</b> ${esc(f.action)}</span>`:''}</div>`).join('');
+  if(d.this_week.length)h+=`<div><h3>This week</h3><ul>${d.this_week.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
+  return h;
+}
+function agentCard(id){
+  const sp=AGENTS[id],st=UI.agents[id]||{},saved=aiStore()[id];
+  let h=`<section class="card"><h2>${esc(sp.name)}</h2><p class="small muted">${esc(sp.blurb)}</p>`;
+  if(st.status==='running')h+=`<div class="chips"><button class="btn" disabled>Working…</button><button class="btn tiny" data-act="stop-agent:${id}">Stop</button></div><p class="small muted" id="ag-note-${id}">${esc(st.note||'')}</p><p class="small muted">This usually takes under a minute.</p>`;
+  else h+=`<div><button class="btn primary" data-act="run-agent:${id}">${saved?'Run again':'Run review'}</button></div>`;
+  if(st.err)h+=`<div class="note bad">${esc(st.err)}</div>`;
+  if(saved)h+=agentResult(saved);
+  return h+'</section>';
+}
+function renderAdvisor(){
+  if(!SAMPLE)return '<section class="card"><h2>AI advisers</h2><p class="muted">Advisers run on your own Claude account, so this page needs to be open inside Claude. That was not detected here. Everything else in Ledgerline works without them.</p></section>';
+  let h='<section class="card"><h2>AI advisers</h2><p class="small muted">Each adviser reads your budget and loans, checks the numbers with the calculator, and says what to do next. Nothing is sent until you press a button, and each run uses your own Claude allowance. This is general guidance, not licensed financial advice.</p>'+(S.example?'<div class="note">You are still on example figures, so advice will describe the examples. Clear them and enter your own first.</div>':'')+'</section>';
+  h+='<div class="agents">'+Object.keys(AGENTS).map(agentCard).join('')+'</div>';
+  h+='<section class="card chat"><div class="card-head"><h2>Ask your adviser</h2>'+(UI.chat.length?'<button class="btn tiny" data-act="clear-chat">Clear chat</button>':'')+'</div><p class="small muted">Ask about your own numbers, for example whether you can afford an extra payment on your most expensive loan.</p>';
+  h+=UI.chat.map(m=>`<div class="msg ${m.role==='user'?'user':'ai'}">${esc(m.content)}</div>`).join('');
+  if(UI.chatBusy)h+='<div class="msg ai" id="chat-live">Thinking…</div>';
+  if(UI.chatErr)h+=`<div class="note bad">${esc(UI.chatErr)}</div>`;
+  h+='<label class="fld"><span>Your question</span><textarea id="chat-in" data-keep="1" placeholder="Type your question"></textarea></label>';
+  h+=UI.chatBusy?'<div><button class="btn tiny" data-act="stop-chat">Stop</button></div>':'<div><button class="btn primary" data-act="send-chat">Send</button></div>';
+  return h+'</section>';
+}
+
+/* ---------- render loop ---------- */
+const TABS=[['overview','Overview'],['dashboard','Dashboard'],['income','Income'],['spending','Spending'],['savings','Savings'],['loans','Loans'],['advisor','AI advisers'],['records','Records'],['reports','Reports'],['setup','Setup']];
+function render(){
+  const ae=document.activeElement,aid=ae&&ae.id,ss=ae&&ae.selectionStart,se=ae&&ae.selectionEnd;
+  setFmt();buildSims();
+  {const th=S.settings.theme;if(th==='light'||th==='dark')document.documentElement.setAttribute('data-theme',th);else document.documentElement.removeAttribute('data-theme')}
+  document.getElementById('viewseg').innerHTML=VIEWS.map(x=>'<button data-act="view:'+x[0]+'" aria-pressed="'+(S.settings.view===x[0])+'">'+x[1]+'</button>').join('');
+  document.getElementById('tabs').innerHTML=TABS.map(x=>'<button role="tab" data-act="tab:'+x[0]+'" aria-selected="'+(tab===x[0])+'">'+x[1]+'</button>').join('');
+  const fn={overview:renderOverview,dashboard:renderDashboard,income:renderIncome,spending:renderSpending,savings:renderSavings,loans:renderLoans,advisor:renderAdvisor,records:renderRecords,reports:renderReports,setup:renderSetup}[tab];
+  const keep={};document.querySelectorAll('[data-keep]').forEach(el=>{keep[el.id]=el.value});
+  document.getElementById('main').innerHTML=fn();
+  Object.keys(keep).forEach(k=>{const el=document.getElementById(k);if(el&&keep[k])el.value=keep[k]});
+  if(aid){const el=document.getElementById(aid);if(el){el.focus();try{if(ss!=null&&el.type==='text')el.setSelectionRange(ss,se)}catch(e){}}}
+}
+let pending=false;
+function later(){if(pending)return;pending=true;setTimeout(()=>{pending=false;render()},0)}
+
+/* ---------- events ---------- */
+const main=document.getElementById('main');
+main.addEventListener('toggle',e=>{const d=e.target;if(!d.dataset||!d.dataset.key)return;const k=d.dataset.key;if(d.open){userOpen.add(k);userClosed.delete(k);if(k==='sched')later()}else{userOpen.delete(k);userClosed.add(k)}},true);
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t&&t.id==='inc-files'){if(UI.inc){UI.inc.fileObjs=Array.prototype.slice.call(t.files||[]);UI.inc.err='';render()}return}
+  if(t&&t.id==='st-files'){if(UI.stmt){UI.stmt.fileObjs=Array.prototype.slice.call(t.files||[]);UI.stmt.err='';render()}return}
+  if(t&&t.id==='ct-files'){if(UI.intake){UI.intake.fileObjs=Array.prototype.slice.call(t.files||[]);UI.intake.err='';render()}return}
+  const el=t.closest&&t.closest('[data-f]');if(!el)return;
+  const d=el.dataset;let v=el.value;
+  if(d.t==='num')v=num(v);
+  if(d.t==='bool')v=!!el.checked;
+  if(d.coll==='recd'||d.coll==='recb'){
+    let r=null,inc=null;S.income.forEach(i=>{const x=(i.records||[]).find(z=>z.id===d.id);if(x){r=x;inc=i}});
+    if(!r)return;
+    const e=(d.coll==='recd'?r.deds:r.disb||[])[+d.did];
+    if(d.f==='date'){if(!ISO_RE.test(v))return;const old=r.date;r.date=v;logEvent('edit',inc.name+': payslip date',old,v)}
+    else if(e){const old=e[d.f];if(d.f==='amount'&&!(v>=0))return;e[d.f]=v;logEvent('edit',inc.name+' '+(d.coll==='recd'?'deduction ':'bank payment ')+(e.label||e.kind||e.payee||'')+': '+d.f,old,v)}
+    save();later();return;
+  }
+  if(d.coll==='gc'){const g=(S.goals||[]).find(x=>x.id===d.id),c=g&&(g.contribs||[]).find(x=>x.id===d.did);if(!c)return;if(d.f==='date'&&!ISO_RE.test(v))return;const old=c[d.f];c[d.f]=v;logEvent('edit','Savings '+g.name+': deposit '+d.f,old,v);save();later();return}
+  if(d.coll==='cv'){const cv=UI.cv=UI.cv||{};cv[d.f]=d.t==='num'?String(v):v;UI.cvErr='';armed=null;later();return}
+  if(d.coll==='recn'){const nw=UI.recNew=UI.recNew||{};nw[d.f]=v;UI.recErr='';later();return}
+  let o=null;
+  switch(d.coll){
+    case 'settings':o=S.settings;break;
+    case 'dash':o=S.settings.dash=S.settings.dash||{};break;
+    case 'rep':o=S.settings.rep=S.settings.rep||{};break;
+    case 'repsec':{const r=S.settings.rep=S.settings.rep||{};o=r.sections=r.sections||{};break}
+    case 'intake':o=UI.intake&&UI.intake.loan;break;
+    case 'stmt':o=UI.stmt;break;
+    case 'incup':o=UI.inc;break;
+    case 'recf':o=UI.rec=UI.rec||{income:'all',kind:'all',year:'all'};break;
+    case 'incl':{const gs=(UI.inc&&UI.inc.result&&UI.inc.result.groups)||[];for(const g of gs){const f=(g.lines||[]).find(x=>x.id===d.id);if(f){o=f;break}}break}
+    case 'incg':o=((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[]).find(x=>x.id===d.id);break;
+    case 'ded':{const inc=S.income.find(x=>x.id===d.id);o=inc&&(inc.deductions||[]).find(x=>x.id===d.did);break}
+    default:o=(S[d.coll]||[]).find(x=>x.id===d.id)
+  }
+  if(!o)return;
+  o[d.f]=v;
+  if(d.coll==='settings'&&d.f==='currency')o[d.f]=String(v).toUpperCase().trim()||'USD';
+  if(d.coll==='income'&&d.f==='type'){/* keep existing deductions; the add buttons change to match the type */}
+  if(d.coll==='intake'||d.coll==='stmt'||d.coll==='incup'||d.coll==='incg'||d.coll==='incl'||d.coll==='recf'){later();return}
+  save();later();
+});
+function removeFrom(arr,id){const i=arr.findIndex(x=>x.id===id);if(i>=0)arr.splice(i,1)}
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-act]');if(!b)return;
+  const [act,arg,arg2]=b.dataset.act.split(':');
+  const disarm=()=>{armed=null};
+  switch(act){
+    case 'view':S.settings.view=arg;break;
+    case 'tab':tab=arg;try{location.hash=arg}catch(_){}armed=null;window.scrollTo(0,0);break;
+    case 'add-income':S.income.push({id:uid(),name:'New income',type:'salary',gross:0,freq:S.settings.payFreq||'fortnight',rel:100,deductions:[]});break;
+    case 'del-income':removeFrom(S.income,arg);break;
+    case 'add-ded':{const inc=S.income.find(x=>x.id===arg);if(inc){const kinds=DED_KINDS[inc.type]||DED_KINDS.other,k=kinds[+arg2]||'Other deduction';(inc.deductions=inc.deductions||[]).push({id:uid(),kind:k,mode:PCT_KINDS.indexOf(k)>=0?'pct':'amt',value:0,freq:inc.freq})}break}
+    case 'del-ded':{const inc=S.income.find(x=>x.id===arg);if(inc)removeFrom(inc.deductions||[],arg2);break}
+    case 'start-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();UI.intake={status:'upload',fileObjs:[],err:''};tab='loans';break;
+    case 'restart-intake':UI.intake={status:'upload',fileObjs:[],err:''};break;
+    case 'cancel-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();UI.intake=null;break;
+    case 'stop-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();return;
+    case 'dsec':dashSec=arg;break;
+    case 'stmt-start':UI.stmt={loanId:loanSel,status:'upload',fileObjs:[],err:''};userOpen.add('stmt');break;
+    case 'stmt-read':readStatement();return;
+    case 'stmt-stop':if(UI.stmt&&UI.stmt.ctl)UI.stmt.ctl.abort();return;
+    case 'stmt-cancel':if(UI.stmt&&UI.stmt.ctl)UI.stmt.ctl.abort();UI.stmt=null;break;
+    case 'stmt-apply':applyStatement();break;
+    case 'dl-rec':downloadRecords();return;
+    case 'convert-all':{const cv=UI.cv||{};const to=cv.to||S.settings.currency;
+      if(to===S.settings.currency||!(num(cv.rate)>0)){UI.cvErr=to===S.settings.currency?'Pick a different currency to convert to.':'Enter the exchange rate.';armed=null;break}
+      UI.cvErr='';if(armed==='convert'){convertAll(cv.rate,to);UI.cv={to:'',rate:''};armed=null}else armed='convert';break}
+    case 'add-goal':{const k=GOAL_KINDS.find(x=>x[0]===arg)||GOAL_KINDS[5];const g={id:uid(),name:k[1],kind:k[0],target:0,date:'',opening:0,plan:0,freq:'month',inBudget:true,contribs:[]};S.goals=(S.goals||[]).concat([g]);logEvent('add','Savings goal '+g.name,'','');break}
+    case 'del-goal':if(armed==='goal:'+arg){const g=(S.goals||[]).find(x=>x.id===arg);if(g)logEvent('remove','Savings goal '+g.name,goalSaved(g),'');S.goals=(S.goals||[]).filter(x=>x.id!==arg);armed=null}else armed='goal:'+arg;break;
+    case 'add-gc':{const g=(S.goals||[]).find(x=>x.id===arg),dt=document.getElementById('gc-date-'+arg).value,am=num(document.getElementById('gc-amt-'+arg).value),nt=document.getElementById('gc-note-'+arg).value;
+      if(g&&ISO_RE.test(dt)&&am>0){(g.contribs=g.contribs||[]).push({id:uid(),date:dt,amount:am,note:String(nt||'').slice(0,80)});logEvent('add','Savings '+g.name+': deposit '+dt,'',am)}break}
+    case 'del-gc':{const g=(S.goals||[]).find(x=>x.id===arg),c=g&&(g.contribs||[]).find(x=>x.id===arg2);if(c){logEvent('remove','Savings '+g.name+': deposit '+c.date,c.amount,'');removeFrom(g.contribs,arg2)}break}
+    case 'add-dr':{
+      const nw=UI.recNew||{},inc=S.income.find(i=>i.id===(nw.income||(S.income[0]||{}).id)),amt=num(nw.amount);
+      if(!inc){UI.recErr='Add an income first.';break}
+      if(!ISO_RE.test(nw.date||'')||!(amt>0)){UI.recErr='Enter a date and an amount above zero.';break}
+      let r=(inc.records||[]).find(x=>x.date===nw.date&&x.src==='manual');
+      if(!r){r={id:uid(),date:nw.date,gross:null,net:null,src:'manual',deds:[],disb:[]};inc.records=(inc.records||[]).concat([r])}
+      if(nw.what==='bank'){(r.disb=r.disb||[]).push({payee:String(nw.payee||'').slice(0,60),amount:amt,purpose:String(nw.purpose||'').slice(0,60)});logEvent('add',inc.name+': bank payment '+(nw.payee||''),'',amt)}
+      else{(r.deds=r.deds||[]).push({kind:nw.kind||'Other deduction',label:String(nw.label||nw.kind||'Deduction').slice(0,60),amount:amt});logEvent('add',inc.name+': deduction '+(nw.label||nw.kind),'',amt)}
+      UI.recErr='';nw.amount='';nw.label='';nw.payee='';nw.purpose='';break}
+    case 'del-br':{for(const inc of S.income){const r=(inc.records||[]).find(x=>x.id===arg);if(r){const e=(r.disb||[])[+arg2];if(e)logEvent('remove',inc.name+': bank payment '+e.payee+' '+(r.date||''),e.amount,'');(r.disb||[]).splice(+arg2,1);break}}break}
+    case 'del-dr':{for(const inc of S.income){const r=(inc.records||[]).find(x=>x.id===arg);if(r){const e=(r.deds||[])[+arg2];if(e)logEvent('remove',inc.name+': deduction '+(e.label||e.kind)+' '+(r.date||''),e.amount,'');(r.deds||[]).splice(+arg2,1);break}}break}
+    case 'inc-start':UI.inc={status:'upload',kind:'payslip',fileObjs:[],err:''};break;
+    case 'inc-read':readIncomeFiles();return;
+    case 'inc-stop':if(UI.inc&&UI.inc.ctl)UI.inc.ctl.abort();return;
+    case 'inc-cancel':if(UI.inc&&UI.inc.ctl)UI.inc.ctl.abort();UI.inc=null;break;
+    case 'inc-apply':applyIncome();break;
+    case 'del-rec':{const inc=S.income.find(x=>x.id===arg);if(inc){const r=(inc.records||[]).find(x=>x.id===arg2);if(r)logEvent('remove',inc.name+': pay record '+(r.date||''),r.net,'');removeFrom(inc.records||[],arg2)}break}
+    case 'extract-contract':extractContract();return;
+    case 'verify-intake':verifyIntake();return;
+    case 'confirm-intake':{const I=UI.intake;if(!I||!I.loan)break;const L=I.loan;
+      if(!(num(L.principal)>0)||!((L.term|0)>0)||!/^\d{4}-\d{2}-\d{2}$/.test(L.start||'')){I.err='Enter the amount borrowed, the number of instalments and the start date before adding the loan.';break}
+      I.err='';if(!L.name)L.name='Loan from contract';S.loans.push(L);loanSel=L.id;UI.intake=null;break}
+    case 'run-agent':runAgent(arg);return;
+    case 'stop-agent':{const a=UI.agents[arg];if(a&&a.ctl)a.ctl.abort();return}
+    case 'send-chat':sendChat();return;
+    case 'stop-chat':if(UI.chatCtl)UI.chatCtl.abort();return;
+    case 'clear-chat':UI.chat=[];UI.chatErr='';break;
+    case 'dl-html':downloadReport('html');return;
+    case 'dl-csv':downloadReport('csv');return;
+
+    case 'add-exp':S.expenses.push({id:uid(),name:'New category',amount:0,freq:'month',bucket:'needs',spent:0});break;
+    case 'del-exp':removeFrom(S.expenses,arg);break;
+    case 'reset-spent':S.expenses.forEach(x=>x.spent=0);break;
+    case 'add-loan':{const PRE={car:{name:'Car loan',principal:30000,term:60,rate:10},personal:{name:'Personal loan',principal:6000,term:12,rate:15,method:'flat'},property:{name:'Property loan',principal:250000,term:240,rate:7.5,defaultDays:60}};const l=newLoan(PRE[arg]);S.loans.push(l);loanSel=l.id;break}
+    case 'sel-loan':loanSel=arg;armed=null;break;
+    case 'del-loan':if(armed==='loan:'+arg){removeFrom(S.loans,arg);armed=null}else{armed='loan:'+arg}break;
+    case 'add-pay':{const L=S.loans.find(x=>x.id===loanSel);const date=document.getElementById('pay-date').value,amt=num(document.getElementById('pay-amt').value);if(L&&date&&amt>0)L.payments.push({id:uid(),date,amount:amt});break}
+    case 'del-pay':{const L=S.loans.find(x=>x.id===loanSel);if(L)removeFrom(L.payments,arg);break}
+    case 'load-template':{const k=document.getElementById('tpl-sel').value;if(S.expenses.length&&armed!=='tpl'){armed='tpl';break}S.settings.profile=k;S.expenses=TEMPLATES[k][1].map(r=>({id:uid(),name:r[0],amount:0,freq:r[2],bucket:r[1],spent:0}));armed=null;break}
+    case 'clear-examples':S.ai={};S.income=[];S.expenses=[];S.loans=[];S.example=false;loanSel=null;break;
+    case 'load-examples':{const c=S.settings.currency;S=normState(sample());S.settings.currency=c;loanSel=null;break}
+    case 'clear-all':if(armed==='all'){S.ai={};S.income=[];S.expenses=[];S.loans=[];S.example=false;loanSel=null;armed=null}else armed='all';break;
+    case 'copy-backup':{const t=document.getElementById('bk-out');const msg=document.getElementById('bk-msg');const ok=()=>{if(msg)msg.textContent='Copied.'};const fail=()=>{t.focus();t.select();if(msg)msg.textContent='Select and copy the text above.'};
+      try{navigator.clipboard.writeText(t.value).then(ok,fail)}catch(_){fail()}return}
+    case 'restore-backup':{const t=document.getElementById('bk-in').value.trim();try{const o=JSON.parse(t);if(o&&o.v===1&&Array.isArray(o.income)&&Array.isArray(o.expenses)&&Array.isArray(o.loans)){S=normState(o);loanSel=null;document.getElementById('bk-in').value=''}else throw 0}catch(_){const m=document.getElementById('bk-msg');if(m)m.textContent='That text is not a Ledgerline backup.';return}break}
+  }
+  if(!['del-loan','load-template','clear-all','del-goal','convert-all'].includes(act))disarm();
+  save();render();
+});
+window.addEventListener('hashchange',()=>{const t=(location.hash||'#overview').slice(1);if(TAB_IDS.indexOf(t)>=0&&t!==tab){tab=t;render()}});
+render();
+(async()=>{
+  const cl=window.claude;
+  if(!cl||!cl.use){CAPS_DONE=true;render();return}
+  const a=(async()=>{try{SAMPLE=await cl.use('sample');if(SAMPLE&&SAMPLE.limits){try{LIM=await SAMPLE.limits()}catch(e){}}}catch(e){}CAPS_DONE=true;render()})();
+  const b=(async()=>{try{DL=await cl.use('downloads')}catch(e){}render()})();
+  await Promise.all([a,b]);
+})();
+</script>

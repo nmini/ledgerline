@@ -1,0 +1,338 @@
+/* ---------- cloud: sign-in, end-to-end encrypted vault, AI service ---------- */
+const CFG=window.LEDGERLINE_CONFIG||{};
+const KDF_ITER=600000,REC_ITER=200000;
+let sb=null,authUser=null,vault=null,DKkey=null,rawDK=null,pushTimer=null,pushing=false,dirty=false,syncState='idle',lockTimer=null,gateView='signin',gateMode='signin',pending=null,unlocked=false;
+const te=new TextEncoder(),td=new TextDecoder();
+const rnd=n=>crypto.getRandomValues(new Uint8Array(n));
+function b64(u8){let s='';const C=0x8000;for(let i=0;i<u8.length;i+=C)s+=String.fromCharCode.apply(null,u8.subarray(i,i+C));return btoa(s)}
+function unb64(s){const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u}
+async function kdfKey(secret,salt,iter){
+  const base=await crypto.subtle.importKey('raw',te.encode(String(secret).normalize('NFKC')),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+const aad=()=>te.encode(authUser.id);
+async function aesEnc(key,u8,ad){
+  const iv=rnd(12),ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:ad},key,u8));
+  const out=new Uint8Array(12+ct.length);out.set(iv);out.set(ct,12);return b64(out);
+}
+async function aesDec(key,s,ad){
+  const u=unb64(s);
+  return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12),additionalData:ad},key,u.slice(12)));
+}
+const B32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function makeRecoveryKey(){
+  const r=rnd(20);let bits=0,val=0,out='';
+  for(const b of r){val=(val<<8)|b;bits+=8;while(bits>=5){out+=B32[(val>>>(bits-5))&31];bits-=5}}
+  return out.match(/.{1,4}/g).join('-');
+}
+const recNorm=s=>String(s||'').toUpperCase().replace(/[^A-Z2-7]/g,'');
+const blankState=()=>normState({v:1,settings:{currency:'PGK',view:'fortnight',profile:'family',household:1,needsPct:50,wantsPct:30,savePct:20},income:[],expenses:[],loans:[],goals:[]});
+
+/* sync */
+function save(){
+  if(!unlocked)return;
+  dirty=true;setSync('pending');clearTimeout(pushTimer);pushTimer=setTimeout(pushVault,1200);
+}
+function setSync(st){syncState=st;renderAcct()}
+function renderAcct(){
+  const el=document.getElementById('acct');if(!el)return;
+  const lab={idle:'',saved:'✓ Saved and encrypted',saving:'Saving…',pending:'Unsaved changes',offline:'▲ Offline, will retry',conflict:'▲ Changed on another device'}[syncState]||'';
+  el.innerHTML='<span class="small '+(syncState==='offline'||syncState==='conflict'?'warn':'muted')+'" role="status">'+lab+'</span>'
+    +(syncState==='conflict'?'<button class="btn tiny" data-act="conf-load">Load latest</button><button class="btn tiny" data-act="conf-over">Keep mine</button>':'')
+    +'<button class="btn tiny" data-act="lock">Lock</button><button class="btn tiny" data-act="signout">Sign out</button>';
+}
+async function updateVault(patch){
+  const r=await sb.from('vaults').update(Object.assign({},patch,{rev:vault.rev+1,updated_at:new Date().toISOString()})).eq('user_id',authUser.id).eq('rev',vault.rev).select('rev');
+  if(r.error)throw r.error;
+  if(!r.data||!r.data.length){const e=new Error('conflict');e.conflict=true;throw e}
+  vault.rev=r.data[0].rev;Object.assign(vault,patch);
+}
+async function pushVault(){
+  if(!unlocked||pushing||!dirty||syncState==='conflict')return;
+  pushing=true;dirty=false;setSync('saving');
+  try{
+    const ct=await aesEnc(DKkey,te.encode(JSON.stringify(S)),aad());
+    await updateVault({ciphertext:ct});
+    setSync(dirty?'pending':'saved');
+  }catch(e){
+    dirty=true;
+    if(e&&e.conflict)setSync('conflict');else{setSync('offline');clearTimeout(pushTimer);pushTimer=setTimeout(pushVault,10000)}
+  }
+  pushing=false;
+  if(dirty&&syncState==='pending'){clearTimeout(pushTimer);pushTimer=setTimeout(pushVault,300)}
+}
+async function loadRemote(){
+  const r=await sb.from('vaults').select('*').eq('user_id',authUser.id).maybeSingle();
+  if(r.error||!r.data)throw (r.error||new Error('Vault not found'));
+  const plain=await aesDec(DKkey,r.data.ciphertext,aad());
+  vault=r.data;S=normState(JSON.parse(td.decode(plain)));dirty=false;
+}
+async function checkRemote(){
+  if(!unlocked||pushing)return;
+  try{
+    const r=await sb.from('vaults').select('rev').eq('user_id',authUser.id).maybeSingle();
+    if(r.error||!r.data||r.data.rev<=vault.rev)return;
+    if(dirty||syncState==='pending'||syncState==='saving'){setSync('conflict');return}
+    await loadRemote();setSync('saved');render();
+  }catch(e){}
+}
+async function lockApp(signOut){
+  clearTimeout(lockTimer);
+  if(unlocked&&dirty&&syncState!=='conflict'){clearTimeout(pushTimer);await pushVault()}
+  unlocked=false;DKkey=null;rawDK=null;vault=signOut?null:vault;S=blankState();dirty=false;syncState='idle';
+  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';
+  if(signOut){try{await sb.auth.signOut()}catch(e){}authUser=null;gate('signin')}else gate('unlock');
+}
+function bumpLock(){
+  clearTimeout(lockTimer);
+  if(!unlocked)return;
+  const m=num(S.settings.lockMin==null?15:S.settings.lockMin);
+  if(m>0)lockTimer=setTimeout(()=>lockApp(false),m*60000);
+}
+
+/* vault creation, unlock, recovery */
+async function prepareVault(pass){
+  const raw=rnd(32),salt=rnd(16),recSalt=rnd(16),recKey=makeRecoveryKey();
+  const dk=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);
+  const pk=await kdfKey(pass,salt,KDF_ITER),rk=await kdfKey(recNorm(recKey),recSalt,REC_ITER),ad=aad();
+  const st=normState(sample());
+  return {raw,dk,recKey,state:st,row:{user_id:authUser.id,rev:1,kdf:{alg:'PBKDF2-SHA256',iter:KDF_ITER,salt:b64(salt)},wrap_pass:await aesEnc(pk,raw,ad),rec_salt:b64(recSalt),wrap_rec:await aesEnc(rk,raw,ad),ciphertext:await aesEnc(dk,te.encode(JSON.stringify(st)),ad)}};
+}
+async function openWith(raw){
+  DKkey=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);rawDK=raw;
+  const plain=await aesDec(DKkey,vault.ciphertext,aad());
+  S=normState(JSON.parse(td.decode(plain)));unlocked=true;dirty=false;syncState='saved';
+  enterApp();
+}
+async function unlockWith(pass){
+  const k=vault.kdf,pk=await kdfKey(pass,unb64(k.salt),k.iter);let raw;
+  try{raw=await aesDec(pk,vault.wrap_pass,aad())}catch(e){throw new Error('Wrong passphrase.')}
+  await openWith(raw);
+}
+async function recoverWith(recKey,newPass){
+  const rk=await kdfKey(recNorm(recKey),unb64(vault.rec_salt),REC_ITER);let raw;
+  try{raw=await aesDec(rk,vault.wrap_rec,aad())}catch(e){throw new Error('That recovery key is not right.')}
+  const salt=rnd(16),pk=await kdfKey(newPass,salt,KDF_ITER);
+  await updateVault({kdf:{alg:'PBKDF2-SHA256',iter:KDF_ITER,salt:b64(salt)},wrap_pass:await aesEnc(pk,raw,aad())});
+  await openWith(raw);
+}
+function enterApp(){
+  CAPS_DONE=true;SAMPLE=AI;LIM=AI_LIMITS;DL=FILES;
+  document.getElementById('gate').hidden=true;document.getElementById('appwrap').hidden=false;
+  renderAcct();render();bumpLock();
+}
+
+/* AI through the Edge Function (stateless; counts calls, stores nothing) */
+const AI_LIMITS={maxPromptBytes:262144,images:{maxCount:6,maxInputBytes:20000000,mediaTypes:['image/jpeg','image/png','image/webp','image/gif']},tools:{maxCount:8}};
+function blobB64(b){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(b)})}
+async function toApiImage(f){
+  if(typeof createImageBitmap==='function'){
+    try{
+      const bm=await createImageBitmap(f),sc=Math.min(1,1568/Math.max(bm.width,bm.height)),cv=document.createElement('canvas');
+      cv.width=Math.max(1,Math.round(bm.width*sc));cv.height=Math.max(1,Math.round(bm.height*sc));
+      cv.getContext('2d').drawImage(bm,0,0,cv.width,cv.height);
+      const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));
+      if(blob)return {media_type:'image/jpeg',data:await blobB64(blob)};
+    }catch(e){}
+  }
+  return {media_type:f.type||'image/jpeg',data:await blobB64(f)};
+}
+async function aiRound(body,signal){
+  const ses=(await sb.auth.getSession()).data.session;
+  if(!ses)throw {code:'session_expired',message:'signed out'};
+  let r;
+  try{r=await fetch(CFG.SUPABASE_URL+'/functions/v1/ai',{method:'POST',signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+ses.access_token,apikey:CFG.SUPABASE_ANON_KEY},body:JSON.stringify(body)})}
+  catch(e){throw {code:(e&&e.name==='AbortError')?'cancelled':'upstream_error',message:String(e&&e.message||e)}}
+  if(!r.ok){
+    const code=r.status===401?'session_expired':r.status===429?'rate_limited':r.status===403?'not_granted':r.status===413?'prompt_too_large':r.status===400?'invalid_request':'upstream_error';
+    throw {code,message:'HTTP '+r.status};
+  }
+  try{return await r.json()}catch(e){throw {code:'upstream_error',message:'bad response'}}
+}
+function parseLoose(t){
+  const s=String(t||'').trim();
+  try{return JSON.parse(s)}catch(e){}
+  const f=s.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}
+  const a=s.search(/[\[{]/),z=Math.max(s.lastIndexOf('}'),s.lastIndexOf(']'));
+  if(a>=0&&z>a){try{return JSON.parse(s.slice(a,z+1))}catch(e){}}
+  throw {code:'invalid_json',message:'no JSON',text:s};
+}
+async function aiCall(input,opts,wantJson){
+  opts=opts||{};
+  const turns=(typeof input==='string'?[{role:'user',content:input}]:input).map(t=>({role:t.role,content:String(t.content)}));
+  let imgs=[];
+  if(opts.images){const arr=Array.isArray(opts.images)?opts.images:[opts.images];imgs=await Promise.all(arr.map(toApiImage))}
+  const msgs=turns.map((t,i)=>({role:t.role,content:(i===turns.length-1&&imgs.length)?imgs.map(im=>({type:'image',source:{type:'base64',media_type:im.media_type,data:im.data}})).concat([{type:'text',text:t.content}]):t.content}));
+  const tools=(opts.tools||[]).map(t=>({name:t.name,description:t.description,input_schema:t.inputSchema||{type:'object',properties:{}}}));
+  const texts=[];
+  for(let round=0;round<6;round++){
+    const body={messages:msgs,max_tokens:wantJson?8192:4096};
+    if(wantJson)body.system='Your final message must contain only the JSON value that was requested, with no commentary. Any narration before tool calls is ignored.';
+    if(tools.length&&round<5)body.tools=tools;
+    const res=await aiRound(body,opts.signal),blocks=Array.isArray(res.content)?res.content:[];
+    const t=blocks.filter(b=>b.type==='text').map(b=>b.text).join('');
+    if(t)texts.push(t);
+    const uses=blocks.filter(b=>b.type==='tool_use');
+    if(res.stop_reason==='tool_use'&&uses.length&&tools.length&&round<5){
+      msgs.push({role:'assistant',content:blocks});
+      const results=[];
+      for(const u of uses){
+        const tool=(opts.tools||[]).find(x=>x.name===u.name);let out,err=false;
+        try{if(!tool)throw new Error('Unknown tool');out=JSON.stringify(await tool.execute(u.input||{},{signal:opts.signal}))}catch(e){out='Error: '+(e&&e.message||e);err=true}
+        results.push({type:'tool_result',tool_use_id:u.id,content:String(out).slice(0,32000),is_error:err});
+      }
+      msgs.push({role:'user',content:results});continue;
+    }
+    break;
+  }
+  const full=(wantJson?texts[texts.length-1]:texts.join('\n\n'))||'';
+  if(!full.trim())throw {code:'empty_completion',message:'empty'};
+  if(opts.onText){try{opts.onText({text:full,delta:full})}catch(e){}}
+  return {text:full,truncated:false};
+}
+const AI=async(input,opts)=>aiCall(input,opts,false);
+AI.json=async(input,opts)=>{const r=await aiCall(input,opts,true);return parseLoose(r.text)};
+AI.limits=async()=>AI_LIMITS;
+const FILES={save:async({filename,data})=>{
+  const blob=data instanceof Blob?data:new Blob([data],{type:/\.html$/.test(filename)?'text/html':/\.csv$/.test(filename)?'text/csv':'text/plain'});
+  const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+  return {status:'saved'};
+}};
+
+/* gate screens */
+const gateEl=document.getElementById('gate'),appEl=document.getElementById('appwrap');
+const gcard=(title,body)=>'<div class="gate-card"><div class="brand"><svg viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="2" width="22" height="22" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"/><path d="M7 9h12M7 13h12M7 17h7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/></svg>Ledgerline</div><h2>'+title+'</h2>'+body+'</div>';
+const gnote=m=>m?'<div class="note bad" role="alert">'+esc(m)+'</div>':'';
+const gfield=(label,name,type,ac)=>`<label class="fld"><span>${label}</span><input name="${name}" type="${type}" autocomplete="${ac||'off'}" required></label>`;
+const GATE={
+  config:()=>gcard('Setup needed','<p>This app needs a Supabase project. Open <b>config.js</b>, add your project URL and anon key, then reload. See README.md.</p>'),
+  loading:()=>gcard('Loading…','<p class="muted">One moment.</p>'),
+  error:m=>gcard('Something went wrong',gnote(m)+'<div class="chips"><button class="btn" data-g="retry">Try again</button><button class="btn" data-g="signout">Sign out</button></div>'),
+  signin:m=>gcard(gateMode==='signup'?'Create your account':'Sign in',
+    '<p class="small muted">Your financial data is encrypted on your device with a passphrase only you know. The service stores scrambled data and cannot read it.</p>'+gnote(m)
+    +`<form data-g="auth">${gfield('Email','email','email','email')}${gfield('Password','password','password',gateMode==='signup'?'new-password':'current-password')}<button class="btn primary" type="submit">${gateMode==='signup'?'Create account':'Sign in'}</button></form>`
+    +'<p class="small"><button class="chip" data-g="mode">'+(gateMode==='signup'?'I already have an account':'Create an account')+'</button></p>'),
+  create:m=>gcard('Choose your passphrase',
+    '<p class="small muted">This passphrase locks your data. It is never sent to the server. <b>If you forget it and lose your recovery key, nobody can recover your data.</b> Use at least 10 characters, such as a few random words.</p>'+gnote(m)
+    +`<form data-g="create">${gfield('Passphrase','p1','password','new-password')}${gfield('Repeat passphrase','p2','password','new-password')}<button class="btn primary" type="submit">Continue</button></form><p class="small"><button class="chip" data-g="signout">Sign out</button></p>`),
+  reckey:m=>gcard('Save your recovery key',
+    '<p class="small muted">This key is the only way back in if you forget your passphrase. Store it somewhere safe and private, apart from this device. It is shown once.</p>'+gnote(m)
+    +`<p class="reckey num">${esc(pending&&pending.recKey)}</p><div class="chips"><button class="btn" data-g="copy-rec">Copy</button><button class="btn" data-g="save-rec">Save as a file</button></div><form data-g="reckey"><label class="chk"><input name="ok" type="checkbox" required><span>I have stored my recovery key safely</span></label><button class="btn primary" type="submit">Create my vault</button></form>`),
+  unlock:m=>gcard('Unlock your data','<p class="small muted">Signed in as '+esc(authUser&&authUser.email||'')+'. Enter your passphrase to decrypt your data on this device.</p>'+gnote(m)
+    +`<form data-g="unlock">${gfield('Passphrase','p1','password','current-password')}<button class="btn primary" type="submit">Unlock</button></form><div class="chips"><button class="chip" data-g="to-recover">Forgot passphrase? Use recovery key</button><button class="chip" data-g="signout">Sign out</button></div>`),
+  recover:m=>gcard('Use your recovery key','<p class="small muted">Enter the recovery key and choose a new passphrase.</p>'+gnote(m)
+    +`<form data-g="recover">${gfield('Recovery key','rk','text','off')}${gfield('New passphrase','p1','password','new-password')}${gfield('Repeat new passphrase','p2','password','new-password')}<button class="btn primary" type="submit">Reset passphrase and unlock</button></form><p class="small"><button class="chip" data-g="to-unlock">Back</button></p>`)
+};
+function gate(view,msg){
+  gateView=view;appEl.hidden=true;gateEl.hidden=false;gateEl.innerHTML=GATE[view](msg||'');
+  const f=gateEl.querySelector('input');if(f&&view!=='reckey')f.focus();
+}
+async function afterAuth(){
+  gate('loading');
+  const r=await sb.from('vaults').select('*').eq('user_id',authUser.id).maybeSingle();
+  if(r.error){gate('error',r.error.message||'Could not reach your vault.');return}
+  vault=r.data;gate(vault?'unlock':'create');
+}
+gateEl.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const f=e.target,g=f.dataset.g,v={};new FormData(f).forEach((val,k)=>{v[k]=val});
+  const btn=f.querySelector('button[type=submit]');if(btn){btn.disabled=true;btn.textContent='Working…'}
+  try{
+    if(g==='auth'){
+      if(String(v.password).length<8)throw new Error('Use a password of at least 8 characters.');
+      if(gateMode==='signup'){
+        const r=await sb.auth.signUp({email:v.email,password:v.password});
+        if(r.error)throw r.error;
+        if(!r.data.session){gateMode='signin';gate('signin','Check your email to confirm your account, then sign in.');return}
+        authUser=r.data.user;await afterAuth();
+      }else{
+        const r=await sb.auth.signInWithPassword({email:v.email,password:v.password});
+        if(r.error)throw r.error;
+        authUser=r.data.user;await afterAuth();
+      }
+    }else if(g==='create'){
+      if(v.p1!==v.p2)throw new Error('The passphrases do not match.');
+      if(String(v.p1).length<10)throw new Error('Use at least 10 characters.');
+      pending=await prepareVault(v.p1);gate('reckey');
+    }else if(g==='reckey'){
+      const r=await sb.from('vaults').insert(pending.row);
+      if(r.error)throw r.error;
+      const raw=pending.raw;vault=Object.assign({},pending.row);pending=null;
+      await openWith(raw);
+    }else if(g==='unlock'){await unlockWith(v.p1)}
+    else if(g==='recover'){
+      if(v.p1!==v.p2)throw new Error('The passphrases do not match.');
+      if(String(v.p1).length<10)throw new Error('Use at least 10 characters.');
+      await recoverWith(v.rk,v.p1);
+    }
+  }catch(err){
+    gate(g==='auth'?'signin':g==='reckey'?'reckey':g,(err&&err.message)||'Something went wrong.');
+  }
+});
+gateEl.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-g]');if(!b||b.tagName==='FORM')return;
+  const a=b.dataset.g;
+  if(a==='mode'){gateMode=gateMode==='signup'?'signin':'signup';gate('signin')}
+  else if(a==='signout'){try{await sb.auth.signOut()}catch(_){}authUser=null;pending=null;gate('signin')}
+  else if(a==='to-recover')gate('recover');
+  else if(a==='to-unlock')gate('unlock');
+  else if(a==='retry'){if(authUser)afterAuth();else gate('signin')}
+  else if(a==='copy-rec'){try{await navigator.clipboard.writeText(pending.recKey);b.textContent='Copied'}catch(_){b.textContent='Select and copy the key above'}}
+  else if(a==='save-rec'){FILES.save({filename:'ledgerline-recovery-key.txt',data:'Ledgerline recovery key\n\n'+pending.recKey+'\n\nKeep this private. Anyone with this key and your account can unlock your data.\n'})}
+});
+
+/* boot */
+async function boot(){
+  CAPS_DONE=true;
+  if(!CFG.SUPABASE_URL||!CFG.SUPABASE_ANON_KEY||!window.supabase){gate('config');return}
+  sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+  sb.auth.onAuthStateChange(ev=>{if(ev==='SIGNED_OUT'&&unlocked){lockApp(true)}});
+  gate('loading');
+  try{
+    const s=(await sb.auth.getSession()).data.session;
+    if(s){authUser=s.user;await afterAuth()}else gate('signin');
+  }catch(e){gate('error',(e&&e.message)||'Could not start.')}
+}
+['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,bumpLock,{passive:true,capture:true}));
+window.addEventListener('focus',checkRemote);
+window.addEventListener('beforeunload',e=>{if(dirty&&unlocked){e.preventDefault();e.returnValue=''}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&dirty&&unlocked){clearTimeout(pushTimer);pushVault()}});
+
+/* security card (Setup) */
+function renderSecurity(){
+  const st=S.settings;
+  let h='<section class="card"><h2>Security and your account</h2><p class="small muted">Signed in as '+esc(authUser&&authUser.email||'')+'. Your data is encrypted on this device before it is saved, so the service and its administrator see only scrambled data. Reading documents and the advisers send the content you choose to an AI service through this app\'s server when you press a button. It is not stored.</p><div class="fields">'
+    +fld('Lock after (minutes idle)','settings','x','lockMin',st.lockMin==null?15:st.lockMin,{opts:[['5','5'],['15','15'],['30','30'],['60','60'],['0','Never']]})+'</div>';
+  if(UI.newRec)h+='<div class="note"><b>Your new recovery key. It replaces the old one and is shown once:</b><p class="reckey num">'+esc(UI.newRec)+'</p><button class="btn tiny" data-act="dismiss-rec">I have saved it</button></div>';
+  h+='<h3>Change passphrase</h3><div class="fields"><label class="fld"><span>Current passphrase</span><input id="sec-cur" type="password" autocomplete="current-password"></label><label class="fld"><span>New passphrase</span><input id="sec-new" type="password" autocomplete="new-password"></label><label class="fld"><span>Repeat new passphrase</span><input id="sec-new2" type="password" autocomplete="new-password"></label><div class="fld"><span>&nbsp;</span><button class="btn" data-act="chg-pass">Change passphrase</button></div></div>';
+  h+=UI.secMsg?'<div class="note'+(UI.secBad?' bad':'')+'">'+esc(UI.secMsg)+'</div>':'';
+  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger'+(armed==='delvault'?' armed':'')+'" data-act="del-vault">'+(armed==='delvault'?'Confirm: delete my cloud data':'Delete my cloud data')+'</button></div></section>';
+  return h;
+}
+async function changePass(){
+  const cur=document.getElementById('sec-cur').value,n1=document.getElementById('sec-new').value,n2=document.getElementById('sec-new2').value;
+  const say=(m,bad)=>{UI.secMsg=m;UI.secBad=!!bad;render()};
+  if(n1!==n2)return say('The new passphrases do not match.',1);
+  if(n1.length<10)return say('Use at least 10 characters.',1);
+  try{
+    const k=vault.kdf;
+    try{await aesDec(await kdfKey(cur,unb64(k.salt),k.iter),vault.wrap_pass,aad())}catch(e){return say('The current passphrase is not right.',1)}
+    const salt=rnd(16),pk=await kdfKey(n1,salt,KDF_ITER);
+    await updateVault({kdf:{alg:'PBKDF2-SHA256',iter:KDF_ITER,salt:b64(salt)},wrap_pass:await aesEnc(pk,rawDK,aad())});
+    logEvent('security','Passphrase changed','','');save();
+    say('Passphrase changed. Use the new one next time you unlock.');
+  }catch(e){say(e&&e.conflict?'Your data changed on another device. Reload and try again.':'Could not change the passphrase. Check your connection.',1)}
+}
+async function newRecoveryKey(){
+  try{
+    const recKey=makeRecoveryKey(),salt=rnd(16),rk=await kdfKey(recNorm(recKey),salt,REC_ITER);
+    await updateVault({rec_salt:b64(salt),wrap_rec:await aesEnc(rk,rawDK,aad())});
+    UI.newRec=recKey;logEvent('security','Recovery key replaced','','');save();
+  }catch(e){UI.secMsg='Could not replace the recovery key.';UI.secBad=true}
+  render();
+}
+async function deleteVault(){
+  try{const r=await sb.from('vaults').delete().eq('user_id',authUser.id);if(r.error)throw r.error}
+  catch(e){UI.secMsg='Could not delete. Check your connection.';UI.secBad=true;render();return}
+  dirty=false;await lockApp(true);
+}
