@@ -651,7 +651,7 @@ function renderSetup(){
 }
 
 /* ---------- v2: shared state and helpers ---------- */
-const UI={intake:null,agents:{},chat:[],chatBusy:false,chatCtl:null,chatErr:''};
+const UI={ver:{},intake:null,agents:{},chat:[],chatBusy:false,chatCtl:null,chatErr:''};
 let SAMPLE=null,DL=null,LIM=null;
 let CAPS_DONE=false;
 const aiStore=()=>S.ai||(S.ai={});
@@ -915,7 +915,7 @@ function renderIntake(){
     if(I.checks&&I.checks.length)h+='<h3>Check against the contract</h3>'+checksTable(I.checks);
     const vb=I.status==='verifying';
     if(vb)h+='<p class="small muted">'+esc(I.progress||'Checking…')+'</p>';
-    return h+'<div class="chips"><button class="btn primary" data-act="confirm-intake"'+(vb?' disabled':'')+'>Add this loan</button>'+(vb?'<button class="btn tiny" data-act="stop-intake">Stop</button>':'<button class="btn" data-act="verify-intake">'+(I.checks?'Verify again':'Verify against the contract')+'</button>')+'<button class="btn" data-act="restart-intake"'+(vb?' disabled':'')+'>Start over</button></div><p class="small muted">Verifying reads the contract a second time and uses more of your daily AI allowance. It compares each figure with the contract wording and corrects what differs.</p></section>';
+    return h+verBox('intake','Checked: I have compared every figure above with the original contract')+verMsgHtml()+'<div class="chips"><button class="btn primary" data-act="confirm-intake"'+(vb?' disabled':'')+'>Add this loan</button>'+(vb?'<button class="btn tiny" data-act="stop-intake">Stop</button>':'<button class="btn" data-act="verify-intake">'+(I.checks?'Verify again':'Verify against the contract')+'</button>')+'<button class="btn" data-act="restart-intake"'+(vb?' disabled':'')+'>Start over</button></div><p class="small muted">Verifying reads the contract a second time and uses more of your daily AI allowance. It compares each figure with the contract wording and corrects what differs.</p></section>';
   }
   const imgOK=!!(LIM&&LIM.images),max=imgOK?LIM.images.maxCount:0,acc=(imgOK?LIM.images.mediaTypes:[]).concat(['application/pdf','.pdf']).join(',');
   h+='<p class="small muted">Add the contract as a PDF or as page photos, up to 20 pages, or paste the text. The AI reads the terms, shows what it found and flags anything unclear or costly. Only the extracted terms are kept, not the images or the text.</p>';
@@ -1189,7 +1189,7 @@ function renderStatement(L){
     h+=R.flags.map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
     if(R.payments.length)h+='<details data-key="stmt-pays"><summary>Payments found ('+R.payments.length+')</summary><div class="inner"><div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>Amount</th></tr></thead><tbody>'+R.payments.map(p=>'<tr><td class="num">'+dShort(parseISO(p.date))+'</td><td class="num">'+m2(p.amount)+'</td></tr>').join('')+'</tbody></table></div></div></details>';
     h+='<div class="chips">'+(R.payments.length&&lo?chk('Count instalments before '+dShort(parseISO(lo.date))+' as paid on time','stmt','assume',st.assume):'')+(R.disbursed.date?chk('Set the loan start date to '+dShort(parseISO(R.disbursed.date)),'stmt','useStart',st.useStart):'')+'</div>';
-    return h+'<p class="small muted">Applying replaces any logged payments inside the statement dates, sets the first instalment date and instalment, and fills the balance check. Review the loan afterwards.</p><div class="chips"><button class="btn primary" data-act="stmt-apply">Apply to this loan</button><button class="btn" data-act="stmt-cancel">Discard</button></div></div></details>';
+    return h+verBox('stmt','Checked: I have compared every figure above with the lender statement')+verMsgHtml()+'<p class="small muted">Applying replaces any logged payments inside the statement dates, sets the first instalment date and instalment, and fills the balance check. Review the loan afterwards.</p><div class="chips"><button class="btn primary" data-act="stmt-apply">Apply to this loan</button><button class="btn" data-act="stmt-cancel">Discard</button></div></div></details>';
   }
   const imgOK=!!(LIM&&LIM.images),acc=(imgOK?LIM.images.mediaTypes:[]).concat(['application/pdf','.pdf']).join(',');
   h+=`<label class="fld"><span>Statement files: PDF or images, up to 60 pages</span><input type="file" id="st-files" multiple accept="${esc(acc)}"></label>`;
@@ -1325,6 +1325,7 @@ async function readIncomeFiles(){
 function applyIncome(){
   const st=UI.inc;if(!st||!st.result)return;
   st.result.groups.filter(g=>g.on).forEach(g=>{
+    deriveGroup(g);
     const rows=g.deds.map(d=>({id:uid(),kind:mapDed(d.label,g.type),mode:'amt',value:d.amount,freq:g.freq,_k:'d:'+normKey(d.label)}));
     let inc=g.target!=='new'?S.income.find(i=>i.id===g.target):null;
     if(!inc){inc={id:uid(),name:g.name,type:g.type,gross:g.gross,freq:g.freq,rel:100,deductions:rows,records:[]};S.income.push(inc)}
@@ -1353,7 +1354,8 @@ function renderIncomeUpload(){
   if(!SAMPLE)return h+'<p class="small muted">'+(CAPS_DONE?'Reading documents needs this page to be open in this app.':'Checking whether document reading is available…')+'</p></section>';
   if(!st)return h+'<p class="small muted">Upload payslips to record gross pay and every deduction, or a bank statement to find regular income. Pay records are kept so deductions can be tracked over time.</p></section>';
   if(st.status==='reading')return h+'<div class="chips"><button class="btn" disabled>Reading…</button><button class="btn tiny" data-act="inc-stop">Stop</button></div><p class="small muted">'+esc(st.progress||'')+'</p></section>';
-  if(st.status==='review'){
+  if(st.status==='review')return h+renderIncReview(st);
+  if(false){
     const R=st.result,opts=[['new','Add as new income']].concat(S.income.map(i=>[i.id,'Update: '+i.name]));
     h+='<p class="small muted">Check what was found, then apply. Payslip figures replace the amount and deductions of the income you update.</p>';
     h+=R.flags.map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
@@ -1814,6 +1816,12 @@ document.addEventListener('change',e=>{
   }
   if(d.coll==='gc'){const g=(S.goals||[]).find(x=>x.id===d.id),c=g&&(g.contribs||[]).find(x=>x.id===d.did);if(!c)return;if(d.f==='date'&&!ISO_RE.test(v))return;const old=c[d.f];c[d.f]=v;logEvent('edit','Savings '+g.name+': deposit '+d.f,old,v);save();later();return}
   if(d.coll==='cv'){const cv=UI.cv=UI.cv||{};cv[d.f]=d.t==='num'?String(v):v;UI.cvErr='';armed=null;later();return}
+  if(d.coll==='incr'||d.coll==='incrd'||d.coll==='incrb'){const rec=findIncRec(d.id);if(!rec)return;delete UI.ver[rec.id];UI.verMsg='';
+    if(d.coll==='incr')rec[d.f]=v;
+    else{const arr=d.coll==='incrd'?rec.deds:rec.disb,e=arr&&arr[+d.did];if(!e)return;e[d.f]=v}
+    later();return}
+  if(d.coll==='intake'){delete UI.ver.intake;UI.verMsg=''}
+  if(d.coll==='stmt'){delete UI.ver.stmt;UI.verMsg=''}
   if(d.coll==='recn'){const nw=UI.recNew=UI.recNew||{};nw[d.f]=v;UI.recErr='';later();return}
   let o=null;
   switch(d.coll){
@@ -1834,7 +1842,7 @@ document.addEventListener('change',e=>{
   o[d.f]=v;
   if(d.coll==='settings'&&d.f==='currency')o[d.f]=String(v).toUpperCase().trim()||'USD';
   if(d.coll==='income'&&d.f==='type'){/* keep existing deductions; the add buttons change to match the type */}
-  if(d.coll==='intake'||d.coll==='stmt'||d.coll==='incup'||d.coll==='incg'||d.coll==='incl'||d.coll==='recf'){later();return}
+  if(d.coll==='intake'||d.coll==='stmt'||d.coll==='incup'||d.coll==='incg'||d.coll==='incl'||d.coll==='recf'||d.coll==='incr'){later();return}
   save();later();
 });
 function removeFrom(arr,id){const i=arr.findIndex(x=>x.id===id);if(i>=0)arr.splice(i,1)}
@@ -1854,6 +1862,12 @@ document.addEventListener('click',e=>{
     case 'cancel-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();UI.intake=null;break;
     case 'stop-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();return;
     case 'dsec':dashSec=arg;break;
+    case 'ver':UI.ver[arg]=!UI.ver[arg];UI.verMsg='';break;
+    case 'incr-addd':{const r=findIncRec(arg);if(r){(r.deds=r.deds||[]).push({label:'',amount:0});delete UI.ver[r.id]}break}
+    case 'incr-deld':{const r=findIncRec(arg);if(r&&r.deds){r.deds.splice(+arg2,1);delete UI.ver[r.id]}break}
+    case 'incr-addb':{const r=findIncRec(arg);if(r){(r.disb=r.disb||[]).push({payee:'',amount:0,purpose:''});delete UI.ver[r.id]}break}
+    case 'incr-delb':{const r=findIncRec(arg);if(r&&r.disb){r.disb.splice(+arg2,1);delete UI.ver[r.id]}break}
+    case 'incr-delrec':{for(const g of ((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[])){const i=g.records.findIndex(x=>x.id===arg);if(i>=0){g.records.splice(i,1);break}}break}
     case 'lock':lockApp(false);return;
     case 'signout':lockApp(true);return;
     case 'conf-load':loadRemote().then(()=>{syncState='saved';dirty=false;render();renderAcct()}).catch(()=>{});return;
@@ -1875,7 +1889,7 @@ document.addEventListener('click',e=>{
     case 'stmt-read':readStatement();return;
     case 'stmt-stop':if(UI.stmt&&UI.stmt.ctl)UI.stmt.ctl.abort();return;
     case 'stmt-cancel':if(UI.stmt&&UI.stmt.ctl)UI.stmt.ctl.abort();UI.stmt=null;break;
-    case 'stmt-apply':applyStatement();break;
+    case 'stmt-apply':if(!verGate(['stmt'],'the statement figures'))break;applyStatement();break;
     case 'dl-rec':downloadRecords();return;
     case 'convert-all':{const cv=UI.cv||{};const to=cv.to||S.settings.currency;
       if(to===S.settings.currency||!(num(cv.rate)>0)){UI.cvErr=to===S.settings.currency?'Pick a different currency to convert to.':'Enter the exchange rate.';armed=null;break}
@@ -1900,11 +1914,11 @@ document.addEventListener('click',e=>{
     case 'inc-read':readIncomeFiles();return;
     case 'inc-stop':if(UI.inc&&UI.inc.ctl)UI.inc.ctl.abort();return;
     case 'inc-cancel':if(UI.inc&&UI.inc.ctl)UI.inc.ctl.abort();UI.inc=null;break;
-    case 'inc-apply':applyIncome();break;
+    case 'inc-apply':if(!verGate(incRecIds(),'every payslip or deposit'))break;applyIncome();break;
     case 'del-rec':{const inc=S.income.find(x=>x.id===arg);if(inc){const r=(inc.records||[]).find(x=>x.id===arg2);if(r)logEvent('remove',inc.name+': pay record '+(r.date||''),r.net,'');trashRec(inc,arg2)}break}
     case 'extract-contract':extractContract();return;
     case 'verify-intake':verifyIntake();return;
-    case 'confirm-intake':{const I=UI.intake;if(!I||!I.loan)break;const L=I.loan;
+    case 'confirm-intake':{const I=UI.intake;if(!I||!I.loan)break;if(!verGate(['intake'],'the contract figures'))break;const L=I.loan;
       if(!(num(L.principal)>0)||!((L.term|0)>0)||!/^\d{4}-\d{2}-\d{2}$/.test(L.start||'')){I.err='Enter the amount borrowed, the number of instalments and the start date before adding the loan.';break}
       I.err='';if(!L.name)L.name='Loan from contract';S.loans.push(L);loanSel=L.id;UI.intake=null;break}
     case 'run-agent':runAgent(arg);return;
@@ -2017,7 +2031,7 @@ async function lockApp(signOut){
   clearTimeout(lockTimer);
   if(unlocked&&dirty&&syncState!=='conflict'){clearTimeout(pushTimer);await pushVault()}
   unlocked=false;DKkey=null;rawDK=null;vault=signOut?null:vault;S=blankState();dirty=false;syncState='idle';
-  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';UI.sel={};UI.trashMsg='';UI.eraseMsg='';
+  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';UI.sel={};UI.trashMsg='';UI.eraseMsg='';UI.ver={};UI.verMsg='';
   if(signOut){try{await sb.auth.signOut()}catch(e){}authUser=null;gate('signin')}else gate('unlock');
 }
 function bumpLock(){
@@ -2323,7 +2337,7 @@ function restoreTrash(id){
 function trashDaysLeft(t){return Math.max(0,Math.ceil((Date.parse(t.at)+TRASH_DAYS*864e5-Date.now())/864e5))}
 function renderDataManager(){
   UI.sel=UI.sel||{};const n=Object.keys(UI.sel).length;
-  let h='<section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
+  let h='<section class="card"><h2>Upload checks</h2><p class="small muted">Figures read from contracts, statements and payslips are never saved until you have checked them. Each one can be edited first.</p><div class="fields">'+fld('Require a Checked tick before applying','settings','x','verify',verOn()?'yes':'no',{opts:[['yes','Yes (recommended)'],['no','No']]})+'</div></section><section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
   let any=false;
   for(const k of Object.keys(TRASH_COLLS)){
     const arr=S[k]||[];if(!arr.length)continue;any=true;
@@ -2406,6 +2420,50 @@ function localPayslips(texts){
   const payslips=[],flags=[];
   for(const t of texts){const p=localPayslip(t);if(p){(p._flags||[]).forEach(f=>flags.push(f));delete p._flags;payslips.push(p)}}
   return {payslips,flags};
+}
+
+/* ---------- verification: every upload must be checked and approved by the user ---------- */
+const verOn=()=>S.settings.verify!=='no';
+const verMsgHtml=()=>UI.verMsg?'<div class="note bad" role="alert">'+esc(UI.verMsg)+'</div>':'';
+function verBox(key,label){return verOn()?'<label class="chk ver"><input type="checkbox" data-act="ver:'+key+'"'+(UI.ver[key]?' checked':'')+'><span><b>'+esc(label)+'</b></span></label>':''}
+function verGate(keys,what){if(!verOn()||keys.every(k=>UI.ver[k])){UI.verMsg='';return true}UI.verMsg='Tick Checked on '+what+' before applying.';return false}
+function incRecIds(){const ks=[];((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[]).filter(g=>g.on).forEach(g=>g.records.forEach(r=>ks.push(r.id)));return ks}
+function findIncRec(id){for(const g of ((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[])){const r=g.records.find(x=>x.id===id);if(r)return r}return null}
+function deriveGroup(g){
+  g.records.forEach(r=>{r.deds=(r.deds||[]).filter(d=>String(d.label||'').trim()&&num(d.amount)>0).map(d=>({kind:mapDed(d.label,g.type),label:String(d.label).trim().slice(0,60),amount:round2(num(d.amount))}));r.disb=(r.disb||[]).filter(d=>num(d.amount)>0).map(d=>({payee:String(d.payee||'').slice(0,60),amount:round2(num(d.amount)),purpose:d.purpose||''}))});
+  g.records.sort((a,b)=>String(a.date||'')<String(b.date||'')?-1:1);
+  const last=g.records[g.records.length-1];
+  if(g.kind==='payslip'&&last){g.gross=num(last.gross);g.deds=last.deds.map(d=>({label:d.label,amount:d.amount}));g.disb=last.disb.map(d=>({payee:d.payee,amount:d.amount,purpose:d.purpose}))}
+  else if(g.kind==='bank'&&g.records.length)g.gross=round2(median(g.records.map(r=>num(r.net))));
+}
+function renderIncReview(st){
+  const R=st.result,opts=[['new','Add as new income']].concat(S.income.map(i=>[i.id,'Update: '+i.name]));
+  let h='<p class="small muted">Check every figure against your document. All of them can be edited, and any line can be added or removed. '+(verOn()?'Tick <b>Checked</b> on each payslip or deposit; you cannot apply until all are ticked, and editing a figure clears its tick.':'')+'</p>';
+  h+=R.flags.map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
+  R.groups.forEach(g=>{
+    h+=`<div class="incbox"><label class="chk"><input type="checkbox" id="f-incg-${g.id}-on" data-coll="incg" data-id="${g.id}" data-f="on" data-t="bool"${g.on?' checked':''}><span><b>${g.kind==='payslip'?'Payslips':'Bank deposits'}</b>: ${g.records.length} found</span></label><div class="row">`
+      +fld('Income name','incg',g.id,'name',g.name,{t:'text'})+fld('Type','incg',g.id,'type',g.type,{opts:INCOME_TYPES})+fld('How often','incg',g.id,'freq',g.freq,{opts:FREQ_OPTS})+fld('Save to','incg',g.id,'target',g.target,{opts:opts})+'</div>';
+    g.records.forEach(r=>{
+      const ded=sumBy(r.deds||[],d=>num(d.amount));
+      h+='<div class="note"><div class="row">'+fld(g.kind==='payslip'?'Pay date':'Deposit date','incr',r.id,'date',r.date||'',{t:'date'})
+        +(g.kind==='payslip'?fld('Gross pay','incr',r.id,'gross',r.gross==null?0:r.gross)+fld('Net pay','incr',r.id,'net',r.net==null?0:r.net):fld('Amount received','incr',r.id,'net',r.net==null?0:r.net))+'</div>';
+      if(g.kind==='payslip'){
+        (r.deds||[]).forEach((e,i)=>{h+='<div class="row">'+fld('Deduction','incrd',r.id,'label',e.label,{t:'text',did:String(i)})+fld('Amount','incrd',r.id,'amount',e.amount,{did:String(i)})+'<div class="fld"><span>&nbsp;</span><button class="btn tiny danger" data-act="incr-deld:'+r.id+':'+i+'">Remove</button></div></div>'});
+        (r.disb||[]).forEach((e,i)=>{h+='<div class="row">'+fld('Paid out to','incrb',r.id,'payee',e.payee,{t:'text',did:String(i)})+fld('Amount','incrb',r.id,'amount',e.amount,{did:String(i)})+'<div class="fld"><span>&nbsp;</span><button class="btn tiny danger" data-act="incr-delb:'+r.id+':'+i+'">Remove</button></div></div>'});
+        h+='<div class="chips"><button class="btn tiny" data-act="incr-addd:'+r.id+'">Add a deduction</button><button class="btn tiny" data-act="incr-addb:'+r.id+'">Add a bank payment</button></div>';
+        const calc=num(r.gross)-ded;
+        h+='<p class="small'+(r.net!=null&&Math.abs(calc-num(r.net))>1?' warn':' muted')+'">Deductions total '+m2(ded)+'. Gross minus deductions is '+m2(calc)+(r.net!=null?'; net pay entered is '+m2(num(r.net))+(Math.abs(calc-num(r.net))>1?'. These differ, so check for a missing or extra line.':'.'):'.')+'</p>';
+      }
+      h+=verBox(r.id,'Checked: these figures match my document')+'<button class="btn tiny danger" data-act="incr-delrec:'+r.id+'">Remove this '+(g.kind==='payslip'?'payslip':'deposit')+'</button></div>';
+    });
+    if(g.kind==='payslip'&&(g.lines||[]).length){
+      const lo=[['none','Not a loan (ignore)'],['new','Create a new loan']].concat(S.loans.map(l=>[l.id,'Loan: '+l.name]));
+      h+='<div class="note"><b>Loan repayments from this pay.</b> Choose the loan each belongs to. It will show in Loans with source Salary, and will not be taken off income twice.</div><div class="row">'+g.lines.map(x=>fld(x.label+': '+m2(x.amount),'incl',x.id,'target',x.target,{opts:lo})).join('')+'</div>';
+    }
+    h+='</div>';
+  });
+  if(R.singles.length)h+='<p class="small muted">Single deposits not added: '+R.singles.slice(0,6).map(c=>esc(c.description)+' '+m2(c.amount)).join(', ')+(R.singles.length>6?' and '+(R.singles.length-6)+' more':'')+'.</p>';
+  return h+verMsgHtml()+'<div class="chips"><button class="btn primary" data-act="inc-apply">Apply</button><button class="btn" data-act="inc-cancel">Discard</button></div></section>';
 }
 
 boot();

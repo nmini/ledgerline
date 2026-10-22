@@ -80,7 +80,7 @@ async function lockApp(signOut){
   clearTimeout(lockTimer);
   if(unlocked&&dirty&&syncState!=='conflict'){clearTimeout(pushTimer);await pushVault()}
   unlocked=false;DKkey=null;rawDK=null;vault=signOut?null:vault;S=blankState();dirty=false;syncState='idle';
-  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';UI.sel={};UI.trashMsg='';UI.eraseMsg='';
+  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';UI.sel={};UI.trashMsg='';UI.eraseMsg='';UI.ver={};UI.verMsg='';
   if(signOut){try{await sb.auth.signOut()}catch(e){}authUser=null;gate('signin')}else gate('unlock');
 }
 function bumpLock(){
@@ -386,7 +386,7 @@ function restoreTrash(id){
 function trashDaysLeft(t){return Math.max(0,Math.ceil((Date.parse(t.at)+TRASH_DAYS*864e5-Date.now())/864e5))}
 function renderDataManager(){
   UI.sel=UI.sel||{};const n=Object.keys(UI.sel).length;
-  let h='<section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
+  let h='<section class="card"><h2>Upload checks</h2><p class="small muted">Figures read from contracts, statements and payslips are never saved until you have checked them. Each one can be edited first.</p><div class="fields">'+fld('Require a Checked tick before applying','settings','x','verify',verOn()?'yes':'no',{opts:[['yes','Yes (recommended)'],['no','No']]})+'</div></section><section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
   let any=false;
   for(const k of Object.keys(TRASH_COLLS)){
     const arr=S[k]||[];if(!arr.length)continue;any=true;
@@ -469,4 +469,48 @@ function localPayslips(texts){
   const payslips=[],flags=[];
   for(const t of texts){const p=localPayslip(t);if(p){(p._flags||[]).forEach(f=>flags.push(f));delete p._flags;payslips.push(p)}}
   return {payslips,flags};
+}
+
+/* ---------- verification: every upload must be checked and approved by the user ---------- */
+const verOn=()=>S.settings.verify!=='no';
+const verMsgHtml=()=>UI.verMsg?'<div class="note bad" role="alert">'+esc(UI.verMsg)+'</div>':'';
+function verBox(key,label){return verOn()?'<label class="chk ver"><input type="checkbox" data-act="ver:'+key+'"'+(UI.ver[key]?' checked':'')+'><span><b>'+esc(label)+'</b></span></label>':''}
+function verGate(keys,what){if(!verOn()||keys.every(k=>UI.ver[k])){UI.verMsg='';return true}UI.verMsg='Tick Checked on '+what+' before applying.';return false}
+function incRecIds(){const ks=[];((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[]).filter(g=>g.on).forEach(g=>g.records.forEach(r=>ks.push(r.id)));return ks}
+function findIncRec(id){for(const g of ((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[])){const r=g.records.find(x=>x.id===id);if(r)return r}return null}
+function deriveGroup(g){
+  g.records.forEach(r=>{r.deds=(r.deds||[]).filter(d=>String(d.label||'').trim()&&num(d.amount)>0).map(d=>({kind:mapDed(d.label,g.type),label:String(d.label).trim().slice(0,60),amount:round2(num(d.amount))}));r.disb=(r.disb||[]).filter(d=>num(d.amount)>0).map(d=>({payee:String(d.payee||'').slice(0,60),amount:round2(num(d.amount)),purpose:d.purpose||''}))});
+  g.records.sort((a,b)=>String(a.date||'')<String(b.date||'')?-1:1);
+  const last=g.records[g.records.length-1];
+  if(g.kind==='payslip'&&last){g.gross=num(last.gross);g.deds=last.deds.map(d=>({label:d.label,amount:d.amount}));g.disb=last.disb.map(d=>({payee:d.payee,amount:d.amount,purpose:d.purpose}))}
+  else if(g.kind==='bank'&&g.records.length)g.gross=round2(median(g.records.map(r=>num(r.net))));
+}
+function renderIncReview(st){
+  const R=st.result,opts=[['new','Add as new income']].concat(S.income.map(i=>[i.id,'Update: '+i.name]));
+  let h='<p class="small muted">Check every figure against your document. All of them can be edited, and any line can be added or removed. '+(verOn()?'Tick <b>Checked</b> on each payslip or deposit; you cannot apply until all are ticked, and editing a figure clears its tick.':'')+'</p>';
+  h+=R.flags.map(f=>`<div class="note${f.severity==='high'?' bad':''}">${esc(f.text)}</div>`).join('');
+  R.groups.forEach(g=>{
+    h+=`<div class="incbox"><label class="chk"><input type="checkbox" id="f-incg-${g.id}-on" data-coll="incg" data-id="${g.id}" data-f="on" data-t="bool"${g.on?' checked':''}><span><b>${g.kind==='payslip'?'Payslips':'Bank deposits'}</b>: ${g.records.length} found</span></label><div class="row">`
+      +fld('Income name','incg',g.id,'name',g.name,{t:'text'})+fld('Type','incg',g.id,'type',g.type,{opts:INCOME_TYPES})+fld('How often','incg',g.id,'freq',g.freq,{opts:FREQ_OPTS})+fld('Save to','incg',g.id,'target',g.target,{opts:opts})+'</div>';
+    g.records.forEach(r=>{
+      const ded=sumBy(r.deds||[],d=>num(d.amount));
+      h+='<div class="note"><div class="row">'+fld(g.kind==='payslip'?'Pay date':'Deposit date','incr',r.id,'date',r.date||'',{t:'date'})
+        +(g.kind==='payslip'?fld('Gross pay','incr',r.id,'gross',r.gross==null?0:r.gross)+fld('Net pay','incr',r.id,'net',r.net==null?0:r.net):fld('Amount received','incr',r.id,'net',r.net==null?0:r.net))+'</div>';
+      if(g.kind==='payslip'){
+        (r.deds||[]).forEach((e,i)=>{h+='<div class="row">'+fld('Deduction','incrd',r.id,'label',e.label,{t:'text',did:String(i)})+fld('Amount','incrd',r.id,'amount',e.amount,{did:String(i)})+'<div class="fld"><span>&nbsp;</span><button class="btn tiny danger" data-act="incr-deld:'+r.id+':'+i+'">Remove</button></div></div>'});
+        (r.disb||[]).forEach((e,i)=>{h+='<div class="row">'+fld('Paid out to','incrb',r.id,'payee',e.payee,{t:'text',did:String(i)})+fld('Amount','incrb',r.id,'amount',e.amount,{did:String(i)})+'<div class="fld"><span>&nbsp;</span><button class="btn tiny danger" data-act="incr-delb:'+r.id+':'+i+'">Remove</button></div></div>'});
+        h+='<div class="chips"><button class="btn tiny" data-act="incr-addd:'+r.id+'">Add a deduction</button><button class="btn tiny" data-act="incr-addb:'+r.id+'">Add a bank payment</button></div>';
+        const calc=num(r.gross)-ded;
+        h+='<p class="small'+(r.net!=null&&Math.abs(calc-num(r.net))>1?' warn':' muted')+'">Deductions total '+m2(ded)+'. Gross minus deductions is '+m2(calc)+(r.net!=null?'; net pay entered is '+m2(num(r.net))+(Math.abs(calc-num(r.net))>1?'. These differ, so check for a missing or extra line.':'.'):'.')+'</p>';
+      }
+      h+=verBox(r.id,'Checked: these figures match my document')+'<button class="btn tiny danger" data-act="incr-delrec:'+r.id+'">Remove this '+(g.kind==='payslip'?'payslip':'deposit')+'</button></div>';
+    });
+    if(g.kind==='payslip'&&(g.lines||[]).length){
+      const lo=[['none','Not a loan (ignore)'],['new','Create a new loan']].concat(S.loans.map(l=>[l.id,'Loan: '+l.name]));
+      h+='<div class="note"><b>Loan repayments from this pay.</b> Choose the loan each belongs to. It will show in Loans with source Salary, and will not be taken off income twice.</div><div class="row">'+g.lines.map(x=>fld(x.label+': '+m2(x.amount),'incl',x.id,'target',x.target,{opts:lo})).join('')+'</div>';
+    }
+    h+='</div>';
+  });
+  if(R.singles.length)h+='<p class="small muted">Single deposits not added: '+R.singles.slice(0,6).map(c=>esc(c.description)+' '+m2(c.amount)).join(', ')+(R.singles.length>6?' and '+(R.singles.length-6)+' more':'')+'.</p>';
+  return h+verMsgHtml()+'<div class="chips"><button class="btn primary" data-act="inc-apply">Apply</button><button class="btn" data-act="inc-cancel">Discard</button></div></section>';
 }

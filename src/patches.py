@@ -15,3 +15,26 @@ rep(r'''      outs.push(await SAMPLE.json(prompt,o2));
       }
       if(UI.inc!==st||ctl.signal.aborted)return;''')
 rep(r'''Reading the contract failed. Try again, or use "Type terms in".''', r'''Reading failed. Try again, or enter the details by hand.''')
+rep(r'''const UI={intake:null,''', r'''const UI={ver:{},intake:null,''')
+rep("  if(st.status==='review'){\n    const R=st.result,opts=[['new','Add as new income']]", "  if(st.status==='review')return h+renderIncReview(st);\n  if(false){\n    const R=st.result,opts=[['new','Add as new income']]")
+rep("  st.result.groups.filter(g=>g.on).forEach(g=>{\n    const rows=g.deds.map(", "  st.result.groups.filter(g=>g.on).forEach(g=>{\n    deriveGroup(g);\n    const rows=g.deds.map(")
+rep("    case 'inc-apply':applyIncome();break;","    case 'inc-apply':if(!verGate(incRecIds(),'every payslip or deposit'))break;applyIncome();break;")
+rep("    case 'stmt-apply':applyStatement();break;","    case 'stmt-apply':if(!verGate(['stmt'],'the statement figures'))break;applyStatement();break;")
+rep("    case 'confirm-intake':{const I=UI.intake;if(!I||!I.loan)break;","    case 'confirm-intake':{const I=UI.intake;if(!I||!I.loan)break;if(!verGate(['intake'],'the contract figures'))break;")
+rep("return h+'<div class=\"chips\"><button class=\"btn primary\" data-act=\"confirm-intake\"'","return h+verBox('intake','Checked: I have compared every figure above with the original contract')+verMsgHtml()+'<div class=\"chips\"><button class=\"btn primary\" data-act=\"confirm-intake\"'")
+rep("return h+'<p class=\"small muted\">Applying replaces any logged payments inside the statement dates","return h+verBox('stmt','Checked: I have compared every figure above with the lender statement')+verMsgHtml()+'<p class=\"small muted\">Applying replaces any logged payments inside the statement dates")
+rep("  if(d.coll==='recn'){const nw=UI.recNew","""  if(d.coll==='incr'||d.coll==='incrd'||d.coll==='incrb'){const rec=findIncRec(d.id);if(!rec)return;delete UI.ver[rec.id];UI.verMsg='';
+    if(d.coll==='incr')rec[d.f]=v;
+    else{const arr=d.coll==='incrd'?rec.deds:rec.disb,e=arr&&arr[+d.did];if(!e)return;e[d.f]=v}
+    later();return}
+  if(d.coll==='intake'){delete UI.ver.intake;UI.verMsg=''}
+  if(d.coll==='stmt'){delete UI.ver.stmt;UI.verMsg=''}
+  if(d.coll==='recn'){const nw=UI.recNew""")
+rep("    case 'dsec':dashSec=arg;break;","""    case 'dsec':dashSec=arg;break;
+    case 'ver':UI.ver[arg]=!UI.ver[arg];UI.verMsg='';break;
+    case 'incr-addd':{const r=findIncRec(arg);if(r){(r.deds=r.deds||[]).push({label:'',amount:0});delete UI.ver[r.id]}break}
+    case 'incr-deld':{const r=findIncRec(arg);if(r&&r.deds){r.deds.splice(+arg2,1);delete UI.ver[r.id]}break}
+    case 'incr-addb':{const r=findIncRec(arg);if(r){(r.disb=r.disb||[]).push({payee:'',amount:0,purpose:''});delete UI.ver[r.id]}break}
+    case 'incr-delb':{const r=findIncRec(arg);if(r&&r.disb){r.disb.splice(+arg2,1);delete UI.ver[r.id]}break}
+    case 'incr-delrec':{for(const g of ((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[])){const i=g.records.findIndex(x=>x.id===arg);if(i>=0){g.records.splice(i,1);break}}break}""")
+rep("d.coll==='incl'||d.coll==='recf'){later();return}","d.coll==='incl'||d.coll==='recf'||d.coll==='incr'){later();return}",must=False)
