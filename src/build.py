@@ -57,6 +57,7 @@ rep("removeFrom(inc.records||[],arg2)}break}","trashRec(inc,arg2)}break}")
 rep("  h+=renderSecurity();","  h+=renderDataManager();\n  h+=renderSecurity();")
 rep("    case 'dismiss-rec':","    case 'sel':{const k=arg+':'+arg2;UI.sel=UI.sel||{};if(UI.sel[k])delete UI.sel[k];else UI.sel[k]=1;break}\n    case 'sel-delete':armed='sel';UI.eraseMsg='';break;\n    case 'sel-confirm':deleteSelected();return;\n    case 'trash-restore':restoreTrash(arg);break;\n    case 'trash-purge':if(armed==='tp:'+arg){S.trash=(S.trash||[]).filter(x=>x.id!==arg);armed=null}else armed='tp:'+arg;break;\n    case 'dismiss-rec':")
 rep("'new-rec','del-vault','clear-all'","'new-rec','del-vault','clear-all','sel-delete','trash-purge'")
+exec(open('src/patches.py').read())
 # strings
 src=re.sub(r"Advisers run on your own Claude account.*?without them\.","Advisers use a daily AI allowance and send only what you choose. Everything else works without them.",src,flags=re.S)
 src=src.replace('inside Claude','in this app').replace('Claude allowance','daily AI allowance')

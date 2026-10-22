@@ -408,3 +408,65 @@ async function deleteSelected(){
   for(const k of keys){const [coll,id]=k.split(':');trashOne(coll,id)}
   UI.sel={};save();render();
 }
+
+/* ---------- payslip reader without AI (rules; used when the AI is unavailable) ---------- */
+const LP_MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+const lp2=n=>String(n).padStart(2,'0');
+const LP_DATE_G=/\b\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}(?:st|nd|rd|th)?[ \-][A-Za-z]{3}[a-z]*[ \-,]+\d{4}\b/g;
+function lpDate(s){
+  let m;
+  if((m=s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/)))return m[0];
+  if((m=s.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/))){let d=+m[1],mo=+m[2],y=+m[3];if(y<100)y+=2000;if(mo>12&&d<=12){const t=d;d=mo;mo=t}if(mo<1||mo>12||d<1||d>31)return '';return y+'-'+lp2(mo)+'-'+lp2(d)}
+  if((m=s.match(/\b(\d{1,2})(?:st|nd|rd|th)?[ \-]([A-Za-z]{3})[a-z]*[ \-,]+(\d{4})\b/))){const mo=LP_MON[m[2].toLowerCase()];if(mo)return m[3]+'-'+lp2(mo)+'-'+lp2(+m[1])}
+  return '';
+}
+function lpAmounts(s){
+  s=s.replace(LP_DATE_G,' ');const out=[];const re=/\(?-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?\)?/g;let m;
+  while((m=re.exec(s))){const v=Math.abs(parseFloat(m[0].replace(/[(),]/g,'')));if(Number.isFinite(v))out.push({v,dec:/\.\d{1,2}\)?$/.test(m[0]),idx:m.index})}
+  return out;
+}
+function lpFirst(s,from){const a=lpAmounts(s.slice(from||0)).filter(x=>x.v>0);return a.length?(a.find(x=>x.dec)||a[0]).v:null}
+const LP_YTD=/\bytd\b|year[\s-]*to[\s-]*date|cumulative/i;
+const LP_GROSS=/gross\s*(pay|salary|earnings|wages|income|amount)?|total\s*(earnings|gross|income|pay)\b/i;
+const LP_NET=/\b(net|nett)\s*(pay|salary|wages|amount|income|paid)?\b|take[\s-]*home|amount\s*(paid|payable)/i;
+const LP_TOTDED=/total\s*deductions?|deductions?\s*total/i;
+const LP_DEDW=/tax|paye|wht|withhold|super|nasfund|nambawan|pension|retire|provident|loan|advance|repay|insurance|medical|health|union|levy|fund|savings|credit union|sacrifice|garnish|child support|uniform|deduction/i;
+const LP_NOTDED=/taxable|before tax|pre-?tax|tax[\s-]*free|tax code|tax file|total|gross|net\b|nett|ytd|balance|outstanding|remaining|limit|\brate\b|employer contribution|entitle/i;
+const LP_EARN=/allowance|bonus|overtime|salary|wage|earning|commission|reimburs|leave|entitle|basic|pay\b/i;
+function lpLabel(line){const m=line.match(/[-\d(]/);const t=(m&&line.search(/\(?-?\d/)>0?line.slice(0,line.search(/\(?-?\d/)):line).replace(/[:.\-_\s]+$/,'').replace(/\s{2,}/g,' ').replace(/\s+(K|PGK|AUD|USD|NZD|\$)$/i,'').trim();return t.slice(0,60)}
+function localPayslip(text){
+  const lines=String(text).split(/\n/).map(x=>x.replace(/\t/g,'  ').trim()).filter(Boolean);
+  let gross=null,net=null,totDed=null,inDed=false,pay='',anyDate='',freq=null,source='';
+  const deds=[],seen=new Set();
+  for(let i=0;i<lines.length;i++){
+    const ln=lines[i],low=ln.toLowerCase(),ytd=LP_YTD.test(ln);
+    if(!anyDate){const d=lpDate(ln);if(d)anyDate=d}
+    if(!pay&&/pay\s*date|date\s*paid|payment\s*date|paid\s*on|period\s*end|pay\s*period|period\s*ending|pay\s*day/i.test(ln)){const ds=ln.match(LP_DATE_G)||[];if(ds.length){const d=lpDate(ds[ds.length-1]);if(d)pay=d}}
+    if(!freq){if(/fortnight|bi-?weekly|every two weeks/i.test(ln))freq='fortnight';else if(/\bweekly\b|per week/i.test(ln))freq='week';else if(/monthly|per month/i.test(ln))freq='month'}
+    if(!source){const m=ln.match(/(?:employer|company|organi[sz]ation|department|payer)\s*(?:name)?\s*[:\-]\s*(.+)/i);if(m)source=m[1].replace(/\s{2,}.*/,'').trim().slice(0,60)}
+    if(ytd)continue;
+    if(LP_TOTDED.test(ln)){const v=lpFirst(ln);if(v!=null&&totDed==null)totDed=v;inDed=false;continue}
+    if(/^\W*(statutory |other |voluntary |employee )?deductions?\W*$/i.test(ln.replace(/\s{2,}/g,' '))){inDed=true;continue}
+    if(/^\W*(earnings|income|payments|allowances|entitlements|leave|employer contributions?)\W*$/i.test(ln)){inDed=false;continue}
+    const netM=LP_NET.test(ln)&&!/tax/i.test(ln);
+    if(netM){const v=lpFirst(ln,ln.search(LP_NET));if(v!=null&&net==null)net=v;inDed=false;continue}
+    if(LP_GROSS.test(ln)&&!/tax/i.test(ln)){const v=lpFirst(ln,ln.search(LP_GROSS));if(v!=null&&gross==null)gross=v;continue}
+    const amt=lpFirst(ln,Math.max(0,ln.search(/\(?-?\d/)));
+    if(amt==null)continue;
+    const label=lpLabel(ln);if(!label||!/[A-Za-z]{3}/.test(label))continue;
+    if(LP_NOTDED.test(label))continue;
+    if(inDed||(LP_DEDW.test(label)&&!LP_EARN.test(label))){const k=label.toLowerCase()+'|'+amt;if(!seen.has(k)){seen.add(k);deds.push({label,amount:amt})}}
+  }
+  if(gross==null&&net!=null&&totDed!=null)gross=Math.round((net+totDed)*100)/100;
+  if(gross==null&&net==null)return null;
+  if(!source){const f=lines.find(l=>/[A-Za-z]{3}/.test(l)&&!/\d/.test(l)&&!/pay\s*slip|payslip|statement|remuneration|advice/i.test(l)&&l.length<=60);source=f||'Salary'}
+  const flags=[],sum=deds.reduce((a,d)=>a+d.amount,0);
+  if(totDed!=null&&Math.abs(sum-totDed)>1)flags.push({severity:'medium',text:'The deduction lines found add to '+sum.toFixed(2)+' but the payslip says total deductions are '+totDed.toFixed(2)+'. Some lines may be missing or extra.'});
+  else if(gross!=null&&net!=null&&Math.abs(gross-sum-net)>1)flags.push({severity:'medium',text:'Gross pay minus the deductions found does not equal net pay. Some deduction lines may be missing or extra.'});
+  return {source,type:'salary',payDate:pay||anyDate||'',frequency:freq,gross:gross!=null?gross:net,net:net,deductions:deds,disbursements:[],_flags:flags};
+}
+function localPayslips(texts){
+  const payslips=[],flags=[];
+  for(const t of texts){const p=localPayslip(t);if(p){(p._flags||[]).forEach(f=>flags.push(f));delete p._flags;payslips.push(p)}}
+  return {payslips,flags};
+}
