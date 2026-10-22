@@ -47,7 +47,16 @@ rep("    case 'dsec':dashSec=arg;break;","""    case 'dsec':dashSec=arg;break;
     case 'clear-all-confirm':eraseAll();return;
     case 'erase-cancel':armed=null;UI.eraseMsg='';break;""")
 rep("'del-goal','convert-all'","'del-goal','convert-all','new-rec','del-vault','clear-all'")
-rep("<button class=\"btn danger'+(armed==='all'?' armed':'')+'\" data-act=\"clear-all\">'+(armed==='all'?'Confirm: erase everything':'Erase everything')+'</button></div></section>';","<button class=\"btn danger\" data-act=\"clear-all\">Erase everything</button></div>'+(armed==='all'?eraseBox('clear-all-confirm','This permanently erases all your income, spending, loans and savings goals. It cannot be undone. Use Setup backup first if you may need them.','Erase everything'):'')+'</section>';")
+rep("<button class=\"btn danger'+(armed==='all'?' armed':'')+'\" data-act=\"clear-all\">'+(armed==='all'?'Confirm: erase everything':'Erase everything')+'</button></div></section>';","<button class=\"btn danger\" data-act=\"clear-all\">Erase everything</button></div>'+(armed==='all'?eraseBox('clear-all-confirm','This erases all your income, spending, loans and savings goals. Everything is kept for 30 days in Recently deleted, where you can restore it. After 30 days it is gone for good.','Erase everything'):'')+'</section>';")
+rep("if(!Array.isArray(o.goals))o.goals=[];","if(!Array.isArray(o.goals))o.goals=[];if(!Array.isArray(o.trash))o.trash=[];")
+rep("    case 'del-income':removeFrom(S.income,arg);break;","    case 'del-income':trashOne('income',arg);break;")
+rep("    case 'del-exp':removeFrom(S.expenses,arg);break;","    case 'del-exp':trashOne('expenses',arg);break;")
+rep("{removeFrom(S.loans,arg);armed=null}","{trashOne('loans',arg);armed=null}")
+rep("S.goals=(S.goals||[]).filter(x=>x.id!==arg);armed=null","trashOne('goals',arg);armed=null")
+rep("removeFrom(inc.records||[],arg2)}break}","trashRec(inc,arg2)}break}")
+rep("  h+=renderSecurity();","  h+=renderDataManager();\n  h+=renderSecurity();")
+rep("    case 'dismiss-rec':","    case 'sel':{const k=arg+':'+arg2;UI.sel=UI.sel||{};if(UI.sel[k])delete UI.sel[k];else UI.sel[k]=1;break}\n    case 'sel-delete':armed='sel';UI.eraseMsg='';break;\n    case 'sel-confirm':deleteSelected();return;\n    case 'trash-restore':restoreTrash(arg);break;\n    case 'trash-purge':if(armed==='tp:'+arg){S.trash=(S.trash||[]).filter(x=>x.id!==arg);armed=null}else armed='tp:'+arg;break;\n    case 'dismiss-rec':")
+rep("'new-rec','del-vault','clear-all'","'new-rec','del-vault','clear-all','sel-delete','trash-purge'")
 # strings
 src=re.sub(r"Advisers run on your own Claude account.*?without them\.","Advisers use a daily AI allowance and send only what you choose. Everything else works without them.",src,flags=re.S)
 src=src.replace('inside Claude','in this app').replace('Claude allowance','daily AI allowance')

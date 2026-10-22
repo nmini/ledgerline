@@ -80,7 +80,7 @@ async function lockApp(signOut){
   clearTimeout(lockTimer);
   if(unlocked&&dirty&&syncState!=='conflict'){clearTimeout(pushTimer);await pushVault()}
   unlocked=false;DKkey=null;rawDK=null;vault=signOut?null:vault;S=blankState();dirty=false;syncState='idle';
-  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';
+  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';UI.sel={};UI.trashMsg='';UI.eraseMsg='';
   if(signOut){try{await sb.auth.signOut()}catch(e){}authUser=null;gate('signin')}else gate('unlock');
 }
 function bumpLock(){
@@ -101,7 +101,7 @@ async function prepareVault(pass){
 async function openWith(raw){
   DKkey=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);rawDK=raw;
   const plain=await aesDec(DKkey,vault.ciphertext,aad());
-  S=normState(JSON.parse(td.decode(plain)));unlocked=true;dirty=false;syncState='saved';
+  S=normState(JSON.parse(td.decode(plain)));purgeTrash();unlocked=true;dirty=false;syncState='saved';
   enterApp();
 }
 async function unlockWith(pass){
@@ -220,6 +220,7 @@ const GATE={
     +`<p class="reckey num">${esc(pending&&pending.recKey)}</p><div class="chips"><button class="btn" data-g="copy-rec">Copy</button><button class="btn" data-g="save-rec">Save as a file</button></div><form data-g="reckey"><label class="chk"><input name="ok" type="checkbox" required><span>I have stored my recovery key safely</span></label><button class="btn primary" type="submit">Create my vault</button></form>`),
   unlock:m=>gcard('Unlock your data','<p class="small muted">Signed in as '+esc(authUser&&authUser.email||'')+'. Enter your passphrase to decrypt your data on this device.</p>'+gnote(m)
     +`<form data-g="unlock">${gfield('Passphrase','p1','password','current-password')}<button class="btn primary" type="submit">Unlock</button></form><div class="chips"><button class="chip" data-g="to-recover">Forgot passphrase? Use recovery key</button><button class="chip" data-g="signout">Sign out</button></div>`),
+  restore:m=>{const d=new Date(vault.deleted_at),end=new Date(d.getTime()+30*864e5);return gcard('Your data was deleted','<p class="small muted">You deleted your cloud data on '+esc(d.toLocaleDateString())+'. It is kept until '+esc(end.toLocaleDateString())+', then permanently removed. You can restore it now.</p>'+gnote(m)+'<div class="chips"><button class="btn primary" data-g="restore-vault">Restore my data</button><button class="btn danger" data-g="purge-vault">Delete it now and start fresh</button><button class="chip" data-g="signout">Sign out</button></div>')},
   recover:m=>gcard('Use your recovery key','<p class="small muted">Enter the recovery key and choose a new passphrase.</p>'+gnote(m)
     +`<form data-g="recover">${gfield('Recovery key','rk','text','off')}${gfield('New passphrase','p1','password','new-password')}${gfield('Repeat new passphrase','p2','password','new-password')}<button class="btn primary" type="submit">Reset passphrase and unlock</button></form><p class="small"><button class="chip" data-g="to-unlock">Back</button></p>`)
 };
@@ -231,7 +232,7 @@ async function afterAuth(){
   gate('loading');
   const r=await sb.from('vaults').select('*').eq('user_id',authUser.id).maybeSingle();
   if(r.error){gate('error',r.error.message||'Could not reach your vault.');return}
-  vault=r.data;gate(vault?'unlock':'create');
+  vault=r.data;gate(vault?(vault.deleted_at?'restore':'unlock'):'create');
 }
 gateEl.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -274,6 +275,8 @@ gateEl.addEventListener('click',async e=>{
   const a=b.dataset.g;
   if(a==='mode'){gateMode=gateMode==='signup'?'signin':'signup';gate('signin')}
   else if(a==='signout'){try{await sb.auth.signOut()}catch(_){}authUser=null;pending=null;gate('signin')}
+  else if(a==='restore-vault'){try{await updateVault({deleted_at:null});gate('unlock')}catch(err){gate('restore','Could not restore. Check your connection.')}}
+  else if(a==='purge-vault'){try{const r=await sb.from('vaults').delete().eq('user_id',authUser.id);if(r.error)throw r.error;vault=null;gate('create')}catch(err){gate('restore','Could not delete. Check your connection.')}}
   else if(a==='to-recover')gate('recover');
   else if(a==='to-unlock')gate('unlock');
   else if(a==='retry'){if(authUser)afterAuth();else gate('signin')}
@@ -306,7 +309,7 @@ function renderSecurity(){
   if(UI.newRec)h+='<div class="note"><b>Your new recovery key. It replaces the old one and is shown once:</b><p class="reckey num">'+esc(UI.newRec)+'</p><button class="btn tiny" data-act="dismiss-rec">I have saved it</button></div>';
   h+='<h3>Change passphrase</h3><div class="fields"><label class="fld"><span>Current passphrase</span><input id="sec-cur" type="password" autocomplete="current-password"></label><label class="fld"><span>New passphrase</span><input id="sec-new" type="password" autocomplete="new-password"></label><label class="fld"><span>Repeat new passphrase</span><input id="sec-new2" type="password" autocomplete="new-password"></label><div class="fld"><span>&nbsp;</span><button class="btn" data-act="chg-pass">Change passphrase</button></div></div>';
   h+=UI.secMsg?'<div class="note'+(UI.secBad?' bad':'')+'">'+esc(UI.secMsg)+'</div>':'';
-  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger" data-act="del-vault">Delete my cloud data</button></div>'+(armed==='delvault'?eraseBox('del-vault-confirm','This permanently deletes your encrypted data from the cloud and signs you out. It cannot be undone. Download a backup first if you may need it.','Delete my cloud data'):'')+'</section>';
+  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger" data-act="del-vault">Delete my cloud data</button></div>'+(armed==='delvault'?eraseBox('del-vault-confirm','Your encrypted cloud data is removed and you are signed out. It is kept for 30 days, so you can sign in and restore it. After 30 days it is permanently deleted.','Delete my cloud data'):'')+'</section>';
   return h;
 }
 async function changePass(){
@@ -332,7 +335,7 @@ async function newRecoveryKey(){
   render();
 }
 async function deleteVault(){
-  try{const r=await sb.from('vaults').delete().eq('user_id',authUser.id);if(r.error)throw r.error}
+  try{await updateVault({deleted_at:new Date().toISOString()})}
   catch(e){UI.secMsg='Could not delete. Check your connection.';UI.secBad=true;render();return}
   dirty=false;await lockApp(true);
 }
@@ -349,7 +352,59 @@ async function checkPass(){
 }
 async function eraseAll(){
   if(!(await checkPass()))return;
-  logEvent('erase','All data erased by the user','','');
+  logEvent('erase','All data erased by the user (kept 30 days in Recently deleted)','','');
+  trashPut('all',{income:S.income,expenses:S.expenses,loans:S.loans,goals:S.goals},'Everything erased');
   S.ai={};S.income=[];S.expenses=[];S.loans=[];S.goals=[];S.example=false;loanSel=null;save();render();
 }
 async function deleteVaultConfirmed(){if(await checkPass())deleteVault()}
+
+/* ---------- 30-day recycle bin and selected deletion ---------- */
+const TRASH_DAYS=30,TRASH_COLLS={income:'Income',expenses:'Spending',loans:'Loan',goals:'Savings goal'};
+const trashName=(coll,it)=>(it&&(it.name||it.lender||it.title))||'Untitled';
+function purgeTrash(){const lim=Date.now()-TRASH_DAYS*864e5;S.trash=(S.trash||[]).filter(t=>{const d=Date.parse(t.at);return d&&d>=lim})}
+function trashPut(coll,item,label,parent){S.trash=S.trash||[];S.trash.push({id:uid(),coll,item:JSON.parse(JSON.stringify(item)),label,parent:parent||null,at:new Date().toISOString()})}
+function trashOne(coll,id){
+  const arr=S[coll]||[],i=arr.findIndex(x=>x.id===id);if(i<0)return;
+  const it=arr[i];trashPut(coll,it,TRASH_COLLS[coll]+': '+trashName(coll,it));
+  logEvent('delete',TRASH_COLLS[coll]+' '+trashName(coll,it)+' moved to Recently deleted','','');arr.splice(i,1);
+}
+function trashRec(inc,rid){
+  const i=(inc.records||[]).findIndex(x=>x.id===rid);if(i<0)return;
+  const r=inc.records[i];trashPut('record',r,'Pay record: '+inc.name+' '+(r.date||''),inc.id);
+  logEvent('delete',inc.name+': pay record '+(r.date||'')+' moved to Recently deleted',r.net,'');inc.records.splice(i,1);
+}
+function restoreTrash(id){
+  const t=(S.trash||[]).find(x=>x.id===id);if(!t)return;
+  UI.trashMsg='';
+  const fresh=(arr,it)=>{if(arr.some(x=>x.id===it.id))it.id=uid();arr.push(it)};
+  if(t.coll==='all'){for(const k of Object.keys(TRASH_COLLS))(t.item[k]||[]).forEach(it=>fresh(S[k]=S[k]||[],it))}
+  else if(t.coll==='record'){const inc=S.income.find(x=>x.id===t.parent);if(!inc){UI.trashMsg='Restore the income source first, then restore this record.';return}fresh(inc.records=inc.records||[],t.item)}
+  else fresh(S[t.coll]=S[t.coll]||[],t.item);
+  logEvent('restore',t.label+' restored','','');
+  S.trash=S.trash.filter(x=>x.id!==id);
+}
+function trashDaysLeft(t){return Math.max(0,Math.ceil((Date.parse(t.at)+TRASH_DAYS*864e5-Date.now())/864e5))}
+function renderDataManager(){
+  UI.sel=UI.sel||{};const n=Object.keys(UI.sel).length;
+  let h='<section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
+  let any=false;
+  for(const k of Object.keys(TRASH_COLLS)){
+    const arr=S[k]||[];if(!arr.length)continue;any=true;
+    h+='<h3>'+TRASH_COLLS[k]+'</h3><div class="chips">'+arr.map(it=>'<label class="chk"><input type="checkbox" data-act="sel:'+k+':'+it.id+'"'+(UI.sel[k+':'+it.id]?' checked':'')+'><span>'+esc(trashName(k,it))+'</span></label>').join('')+'</div>';
+  }
+  if(!any)h+='<p class="muted">Nothing to delete.</p>';
+  h+='<div class="chips"><button class="btn danger" data-act="sel-delete"'+(n?'':' disabled')+'>Delete selected ('+n+')</button></div>';
+  if(armed==='sel'&&n)h+=eraseBox('sel-confirm','You are about to delete '+n+' selected item'+(n===1?'':'s')+'. They move to Recently deleted for '+TRASH_DAYS+' days.','Delete selected');
+  h+='</section>';
+  const tr=S.trash||[];
+  h+='<section class="card"><h2>Recently deleted</h2><p class="small muted">Kept for '+TRASH_DAYS+' days, then removed for good.</p>'+(UI.trashMsg?'<div class="note bad">'+esc(UI.trashMsg)+'</div>':'');
+  if(!tr.length)h+='<p class="muted">Nothing here.</p>';
+  else h+='<div class="scroll"><table><thead><tr><th>Item</th><th>Deleted</th><th>Days left</th><th></th></tr></thead><tbody>'+tr.slice().reverse().map(t=>'<tr><td>'+esc(t.label)+'</td><td>'+esc(String(t.at).slice(0,10))+'</td><td class="num">'+trashDaysLeft(t)+'</td><td><button class="btn tiny" data-act="trash-restore:'+t.id+'">Restore</button> <button class="btn tiny danger'+(armed==='tp:'+t.id?' armed':'')+'" data-act="trash-purge:'+t.id+'">'+(armed==='tp:'+t.id?'Confirm: delete for good':'Delete for good')+'</button></td></tr>').join('')+'</tbody></table></div>';
+  return h+'</section>';
+}
+async function deleteSelected(){
+  if(!(await checkPass()))return;
+  const keys=Object.keys(UI.sel||{});
+  for(const k of keys){const [coll,id]=k.split(':');trashOne(coll,id)}
+  UI.sel={};save();render();
+}

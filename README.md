@@ -23,3 +23,7 @@
 - You pay for hosting and AI usage; the daily limit caps it per user.
 - This build was tested in a simulated browser with a mocked Supabase, not against a live project or Deno. Test sign-up, unlock, a second device and one AI read before selling.
 - Before selling worldwide, get legal advice on privacy law, terms, and financial-software disclaimers.
+
+## Deleting and restoring
+- Deleting an income, spending line, loan, savings goal or pay record moves it to **Setup > Recently deleted** for 30 days. It can be restored or deleted for good. "Erase everything" and "Delete selected data" ask for the passphrase and use the same 30-day bin.
+- "Delete my cloud data" marks the encrypted vault as deleted. Signing in within 30 days offers **Restore**. A daily database job (pg_cron, in `schema.sql`) removes it permanently after 30 days.

@@ -323,7 +323,7 @@ function sample(){
     loans:[car,pl,prop]};
 }
 function normState(o){
-  o.settings=o.settings||{};o.ai=o.ai||{};if(!Array.isArray(o.log))o.log=[];if(!Array.isArray(o.goals))o.goals=[];
+  o.settings=o.settings||{};o.ai=o.ai||{};if(!Array.isArray(o.log))o.log=[];if(!Array.isArray(o.goals))o.goals=[];if(!Array.isArray(o.trash))o.trash=[];
   (o.income||[]).forEach(i=>{
     if(['salary','property','business','other'].indexOf(i.type)<0)i.type='salary';
     if(!PY[i.freq])i.freq=normFreq(i.freq)||'month';
@@ -644,8 +644,9 @@ function renderSetup(){
   h+='<section class="card"><h2>Back up and restore</h2><p class="small muted">Your data is saved encrypted to your account and opens on any device you sign in on. You can also keep a backup text here.</p>'
     +'<label class="fld"><span>Backup text</span><textarea id="bk-out" readonly>'+esc(json)+'</textarea></label><div><button class="btn" data-act="copy-backup">Copy backup</button> <span class="small muted" id="bk-msg"></span></div>'
     +'<label class="fld"><span>Paste a backup to restore</span><textarea id="bk-in" data-keep="1" placeholder="Paste backup text here"></textarea></label><div><button class="btn" data-act="restore-backup">Restore</button></div></section>';
+  h+=renderDataManager();
   h+=renderSecurity();
-  h+='<section class="card"><h2>Reset</h2><div class="chips"><button class="btn" data-act="load-examples">Load example figures</button><button class="btn danger" data-act="clear-all">Erase everything</button></div>'+(armed==='all'?eraseBox('clear-all-confirm','This permanently erases all your income, spending, loans and savings goals. It cannot be undone. Use Setup backup first if you may need them.','Erase everything'):'')+'</section>';
+  h+='<section class="card"><h2>Reset</h2><div class="chips"><button class="btn" data-act="load-examples">Load example figures</button><button class="btn danger" data-act="clear-all">Erase everything</button></div>'+(armed==='all'?eraseBox('clear-all-confirm','This erases all your income, spending, loans and savings goals. Everything is kept for 30 days in Recently deleted, where you can restore it. After 30 days it is gone for good.','Erase everything'):'')+'</section>';
   return h;
 }
 
@@ -1836,7 +1837,7 @@ document.addEventListener('click',e=>{
     case 'view':S.settings.view=arg;break;
     case 'tab':tab=arg;try{location.hash=arg}catch(_){}armed=null;window.scrollTo(0,0);break;
     case 'add-income':S.income.push({id:uid(),name:'New income',type:'salary',gross:0,freq:S.settings.payFreq||'fortnight',rel:100,deductions:[]});break;
-    case 'del-income':removeFrom(S.income,arg);break;
+    case 'del-income':trashOne('income',arg);break;
     case 'add-ded':{const inc=S.income.find(x=>x.id===arg);if(inc){const kinds=DED_KINDS[inc.type]||DED_KINDS.other,k=kinds[+arg2]||'Other deduction';(inc.deductions=inc.deductions||[]).push({id:uid(),kind:k,mode:PCT_KINDS.indexOf(k)>=0?'pct':'amt',value:0,freq:inc.freq})}break}
     case 'del-ded':{const inc=S.income.find(x=>x.id===arg);if(inc)removeFrom(inc.deductions||[],arg2);break}
     case 'start-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();UI.intake={status:'upload',fileObjs:[],err:''};tab='loans';break;
@@ -1848,6 +1849,11 @@ document.addEventListener('click',e=>{
     case 'signout':lockApp(true);return;
     case 'conf-load':loadRemote().then(()=>{syncState='saved';dirty=false;render();renderAcct()}).catch(()=>{});return;
     case 'conf-over':vault.rev=vault.rev;sb.from('vaults').select('rev').eq('user_id',authUser.id).maybeSingle().then(r=>{if(r.data){vault.rev=r.data.rev;syncState='pending';dirty=true;pushVault()}});return;
+    case 'sel':{const k=arg+':'+arg2;UI.sel=UI.sel||{};if(UI.sel[k])delete UI.sel[k];else UI.sel[k]=1;break}
+    case 'sel-delete':armed='sel';UI.eraseMsg='';break;
+    case 'sel-confirm':deleteSelected();return;
+    case 'trash-restore':restoreTrash(arg);break;
+    case 'trash-purge':if(armed==='tp:'+arg){S.trash=(S.trash||[]).filter(x=>x.id!==arg);armed=null}else armed='tp:'+arg;break;
     case 'dismiss-rec':UI.newRec=null;break;
     case 'chg-pass':changePass();return;
     case 'new-rec':if(armed==='newrec'){armed=null;newRecoveryKey();return}armed='newrec';break;
@@ -1866,7 +1872,7 @@ document.addEventListener('click',e=>{
       if(to===S.settings.currency||!(num(cv.rate)>0)){UI.cvErr=to===S.settings.currency?'Pick a different currency to convert to.':'Enter the exchange rate.';armed=null;break}
       UI.cvErr='';if(armed==='convert'){convertAll(cv.rate,to);UI.cv={to:'',rate:''};armed=null}else armed='convert';break}
     case 'add-goal':{const k=GOAL_KINDS.find(x=>x[0]===arg)||GOAL_KINDS[5];const g={id:uid(),name:k[1],kind:k[0],target:0,date:'',opening:0,plan:0,freq:'month',inBudget:true,contribs:[]};S.goals=(S.goals||[]).concat([g]);logEvent('add','Savings goal '+g.name,'','');break}
-    case 'del-goal':if(armed==='goal:'+arg){const g=(S.goals||[]).find(x=>x.id===arg);if(g)logEvent('remove','Savings goal '+g.name,goalSaved(g),'');S.goals=(S.goals||[]).filter(x=>x.id!==arg);armed=null}else armed='goal:'+arg;break;
+    case 'del-goal':if(armed==='goal:'+arg){const g=(S.goals||[]).find(x=>x.id===arg);if(g)logEvent('remove','Savings goal '+g.name,goalSaved(g),'');trashOne('goals',arg);armed=null}else armed='goal:'+arg;break;
     case 'add-gc':{const g=(S.goals||[]).find(x=>x.id===arg),dt=document.getElementById('gc-date-'+arg).value,am=num(document.getElementById('gc-amt-'+arg).value),nt=document.getElementById('gc-note-'+arg).value;
       if(g&&ISO_RE.test(dt)&&am>0){(g.contribs=g.contribs||[]).push({id:uid(),date:dt,amount:am,note:String(nt||'').slice(0,80)});logEvent('add','Savings '+g.name+': deposit '+dt,'',am)}break}
     case 'del-gc':{const g=(S.goals||[]).find(x=>x.id===arg),c=g&&(g.contribs||[]).find(x=>x.id===arg2);if(c){logEvent('remove','Savings '+g.name+': deposit '+c.date,c.amount,'');removeFrom(g.contribs,arg2)}break}
@@ -1886,7 +1892,7 @@ document.addEventListener('click',e=>{
     case 'inc-stop':if(UI.inc&&UI.inc.ctl)UI.inc.ctl.abort();return;
     case 'inc-cancel':if(UI.inc&&UI.inc.ctl)UI.inc.ctl.abort();UI.inc=null;break;
     case 'inc-apply':applyIncome();break;
-    case 'del-rec':{const inc=S.income.find(x=>x.id===arg);if(inc){const r=(inc.records||[]).find(x=>x.id===arg2);if(r)logEvent('remove',inc.name+': pay record '+(r.date||''),r.net,'');removeFrom(inc.records||[],arg2)}break}
+    case 'del-rec':{const inc=S.income.find(x=>x.id===arg);if(inc){const r=(inc.records||[]).find(x=>x.id===arg2);if(r)logEvent('remove',inc.name+': pay record '+(r.date||''),r.net,'');trashRec(inc,arg2)}break}
     case 'extract-contract':extractContract();return;
     case 'verify-intake':verifyIntake();return;
     case 'confirm-intake':{const I=UI.intake;if(!I||!I.loan)break;const L=I.loan;
@@ -1901,11 +1907,11 @@ document.addEventListener('click',e=>{
     case 'dl-csv':downloadReport('csv');return;
 
     case 'add-exp':S.expenses.push({id:uid(),name:'New category',amount:0,freq:'month',bucket:'needs',spent:0});break;
-    case 'del-exp':removeFrom(S.expenses,arg);break;
+    case 'del-exp':trashOne('expenses',arg);break;
     case 'reset-spent':S.expenses.forEach(x=>x.spent=0);break;
     case 'add-loan':{const PRE={car:{name:'Car loan',principal:30000,term:60,rate:10},personal:{name:'Personal loan',principal:6000,term:12,rate:15,method:'flat'},property:{name:'Property loan',principal:250000,term:240,rate:7.5,defaultDays:60}};const l=newLoan(PRE[arg]);S.loans.push(l);loanSel=l.id;break}
     case 'sel-loan':loanSel=arg;armed=null;break;
-    case 'del-loan':if(armed==='loan:'+arg){removeFrom(S.loans,arg);armed=null}else{armed='loan:'+arg}break;
+    case 'del-loan':if(armed==='loan:'+arg){trashOne('loans',arg);armed=null}else{armed='loan:'+arg}break;
     case 'add-pay':{const L=S.loans.find(x=>x.id===loanSel);const date=document.getElementById('pay-date').value,amt=num(document.getElementById('pay-amt').value);if(L&&date&&amt>0)L.payments.push({id:uid(),date,amount:amt});break}
     case 'del-pay':{const L=S.loans.find(x=>x.id===loanSel);if(L)removeFrom(L.payments,arg);break}
     case 'load-template':{const k=document.getElementById('tpl-sel').value;if(S.expenses.length&&armed!=='tpl'){armed='tpl';break}S.settings.profile=k;S.expenses=TEMPLATES[k][1].map(r=>({id:uid(),name:r[0],amount:0,freq:r[2],bucket:r[1],spent:0}));armed=null;break}
@@ -1916,7 +1922,7 @@ document.addEventListener('click',e=>{
       try{navigator.clipboard.writeText(t.value).then(ok,fail)}catch(_){fail()}return}
     case 'restore-backup':{const t=document.getElementById('bk-in').value.trim();try{const o=JSON.parse(t);if(o&&o.v===1&&Array.isArray(o.income)&&Array.isArray(o.expenses)&&Array.isArray(o.loans)){S=normState(o);loanSel=null;document.getElementById('bk-in').value=''}else throw 0}catch(_){const m=document.getElementById('bk-msg');if(m)m.textContent='That text is not a Ledgerline backup.';return}break}
   }
-  if(!['del-loan','load-template','clear-all','del-goal','convert-all','new-rec','del-vault','clear-all'].includes(act))disarm();
+  if(!['del-loan','load-template','clear-all','del-goal','convert-all','new-rec','del-vault','clear-all','sel-delete','trash-purge'].includes(act))disarm();
   save();render();
 });
 window.addEventListener('hashchange',()=>{const t=(location.hash||'#overview').slice(1);if(TAB_IDS.indexOf(t)>=0&&t!==tab){tab=t;render()}});
@@ -2002,7 +2008,7 @@ async function lockApp(signOut){
   clearTimeout(lockTimer);
   if(unlocked&&dirty&&syncState!=='conflict'){clearTimeout(pushTimer);await pushVault()}
   unlocked=false;DKkey=null;rawDK=null;vault=signOut?null:vault;S=blankState();dirty=false;syncState='idle';
-  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';
+  UI.intake=null;UI.stmt=null;UI.inc=null;UI.chat=[];UI.agents={};UI.newRec=null;UI.secMsg='';UI.sel={};UI.trashMsg='';UI.eraseMsg='';
   if(signOut){try{await sb.auth.signOut()}catch(e){}authUser=null;gate('signin')}else gate('unlock');
 }
 function bumpLock(){
@@ -2023,7 +2029,7 @@ async function prepareVault(pass){
 async function openWith(raw){
   DKkey=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);rawDK=raw;
   const plain=await aesDec(DKkey,vault.ciphertext,aad());
-  S=normState(JSON.parse(td.decode(plain)));unlocked=true;dirty=false;syncState='saved';
+  S=normState(JSON.parse(td.decode(plain)));purgeTrash();unlocked=true;dirty=false;syncState='saved';
   enterApp();
 }
 async function unlockWith(pass){
@@ -2142,6 +2148,7 @@ const GATE={
     +`<p class="reckey num">${esc(pendV&&pendV.recKey)}</p><div class="chips"><button class="btn" data-g="copy-rec">Copy</button><button class="btn" data-g="save-rec">Save as a file</button></div><form data-g="reckey"><label class="chk"><input name="ok" type="checkbox" required><span>I have stored my recovery key safely</span></label><button class="btn primary" type="submit">Create my vault</button></form>`),
   unlock:m=>gcard('Unlock your data','<p class="small muted">Signed in as '+esc(authUser&&authUser.email||'')+'. Enter your passphrase to decrypt your data on this device.</p>'+gnote(m)
     +`<form data-g="unlock">${gfield('Passphrase','p1','password','current-password')}<button class="btn primary" type="submit">Unlock</button></form><div class="chips"><button class="chip" data-g="to-recover">Forgot passphrase? Use recovery key</button><button class="chip" data-g="signout">Sign out</button></div>`),
+  restore:m=>{const d=new Date(vault.deleted_at),end=new Date(d.getTime()+30*864e5);return gcard('Your data was deleted','<p class="small muted">You deleted your cloud data on '+esc(d.toLocaleDateString())+'. It is kept until '+esc(end.toLocaleDateString())+', then permanently removed. You can restore it now.</p>'+gnote(m)+'<div class="chips"><button class="btn primary" data-g="restore-vault">Restore my data</button><button class="btn danger" data-g="purge-vault">Delete it now and start fresh</button><button class="chip" data-g="signout">Sign out</button></div>')},
   recover:m=>gcard('Use your recovery key','<p class="small muted">Enter the recovery key and choose a new passphrase.</p>'+gnote(m)
     +`<form data-g="recover">${gfield('Recovery key','rk','text','off')}${gfield('New passphrase','p1','password','new-password')}${gfield('Repeat new passphrase','p2','password','new-password')}<button class="btn primary" type="submit">Reset passphrase and unlock</button></form><p class="small"><button class="chip" data-g="to-unlock">Back</button></p>`)
 };
@@ -2153,7 +2160,7 @@ async function afterAuth(){
   gate('loading');
   const r=await sb.from('vaults').select('*').eq('user_id',authUser.id).maybeSingle();
   if(r.error){gate('error',r.error.message||'Could not reach your vault.');return}
-  vault=r.data;gate(vault?'unlock':'create');
+  vault=r.data;gate(vault?(vault.deleted_at?'restore':'unlock'):'create');
 }
 gateEl.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -2196,6 +2203,8 @@ gateEl.addEventListener('click',async e=>{
   const a=b.dataset.g;
   if(a==='mode'){gateMode=gateMode==='signup'?'signin':'signup';gate('signin')}
   else if(a==='signout'){try{await sb.auth.signOut()}catch(_){}authUser=null;pendV=null;gate('signin')}
+  else if(a==='restore-vault'){try{await updateVault({deleted_at:null});gate('unlock')}catch(err){gate('restore','Could not restore. Check your connection.')}}
+  else if(a==='purge-vault'){try{const r=await sb.from('vaults').delete().eq('user_id',authUser.id);if(r.error)throw r.error;vault=null;gate('create')}catch(err){gate('restore','Could not delete. Check your connection.')}}
   else if(a==='to-recover')gate('recover');
   else if(a==='to-unlock')gate('unlock');
   else if(a==='retry'){if(authUser)afterAuth();else gate('signin')}
@@ -2228,7 +2237,7 @@ function renderSecurity(){
   if(UI.newRec)h+='<div class="note"><b>Your new recovery key. It replaces the old one and is shown once:</b><p class="reckey num">'+esc(UI.newRec)+'</p><button class="btn tiny" data-act="dismiss-rec">I have saved it</button></div>';
   h+='<h3>Change passphrase</h3><div class="fields"><label class="fld"><span>Current passphrase</span><input id="sec-cur" type="password" autocomplete="current-password"></label><label class="fld"><span>New passphrase</span><input id="sec-new" type="password" autocomplete="new-password"></label><label class="fld"><span>Repeat new passphrase</span><input id="sec-new2" type="password" autocomplete="new-password"></label><div class="fld"><span>&nbsp;</span><button class="btn" data-act="chg-pass">Change passphrase</button></div></div>';
   h+=UI.secMsg?'<div class="note'+(UI.secBad?' bad':'')+'">'+esc(UI.secMsg)+'</div>':'';
-  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger" data-act="del-vault">Delete my cloud data</button></div>'+(armed==='delvault'?eraseBox('del-vault-confirm','This permanently deletes your encrypted data from the cloud and signs you out. It cannot be undone. Download a backup first if you may need it.','Delete my cloud data'):'')+'</section>';
+  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger" data-act="del-vault">Delete my cloud data</button></div>'+(armed==='delvault'?eraseBox('del-vault-confirm','Your encrypted cloud data is removed and you are signed out. It is kept for 30 days, so you can sign in and restore it. After 30 days it is permanently deleted.','Delete my cloud data'):'')+'</section>';
   return h;
 }
 async function changePass(){
@@ -2254,7 +2263,7 @@ async function newRecoveryKey(){
   render();
 }
 async function deleteVault(){
-  try{const r=await sb.from('vaults').delete().eq('user_id',authUser.id);if(r.error)throw r.error}
+  try{await updateVault({deleted_at:new Date().toISOString()})}
   catch(e){UI.secMsg='Could not delete. Check your connection.';UI.secBad=true;render();return}
   dirty=false;await lockApp(true);
 }
@@ -2271,10 +2280,62 @@ async function checkPass(){
 }
 async function eraseAll(){
   if(!(await checkPass()))return;
-  logEvent('erase','All data erased by the user','','');
+  logEvent('erase','All data erased by the user (kept 30 days in Recently deleted)','','');
+  trashPut('all',{income:S.income,expenses:S.expenses,loans:S.loans,goals:S.goals},'Everything erased');
   S.ai={};S.income=[];S.expenses=[];S.loans=[];S.goals=[];S.example=false;loanSel=null;save();render();
 }
 async function deleteVaultConfirmed(){if(await checkPass())deleteVault()}
+
+/* ---------- 30-day recycle bin and selected deletion ---------- */
+const TRASH_DAYS=30,TRASH_COLLS={income:'Income',expenses:'Spending',loans:'Loan',goals:'Savings goal'};
+const trashName=(coll,it)=>(it&&(it.name||it.lender||it.title))||'Untitled';
+function purgeTrash(){const lim=Date.now()-TRASH_DAYS*864e5;S.trash=(S.trash||[]).filter(t=>{const d=Date.parse(t.at);return d&&d>=lim})}
+function trashPut(coll,item,label,parent){S.trash=S.trash||[];S.trash.push({id:uid(),coll,item:JSON.parse(JSON.stringify(item)),label,parent:parent||null,at:new Date().toISOString()})}
+function trashOne(coll,id){
+  const arr=S[coll]||[],i=arr.findIndex(x=>x.id===id);if(i<0)return;
+  const it=arr[i];trashPut(coll,it,TRASH_COLLS[coll]+': '+trashName(coll,it));
+  logEvent('delete',TRASH_COLLS[coll]+' '+trashName(coll,it)+' moved to Recently deleted','','');arr.splice(i,1);
+}
+function trashRec(inc,rid){
+  const i=(inc.records||[]).findIndex(x=>x.id===rid);if(i<0)return;
+  const r=inc.records[i];trashPut('record',r,'Pay record: '+inc.name+' '+(r.date||''),inc.id);
+  logEvent('delete',inc.name+': pay record '+(r.date||'')+' moved to Recently deleted',r.net,'');inc.records.splice(i,1);
+}
+function restoreTrash(id){
+  const t=(S.trash||[]).find(x=>x.id===id);if(!t)return;
+  UI.trashMsg='';
+  const fresh=(arr,it)=>{if(arr.some(x=>x.id===it.id))it.id=uid();arr.push(it)};
+  if(t.coll==='all'){for(const k of Object.keys(TRASH_COLLS))(t.item[k]||[]).forEach(it=>fresh(S[k]=S[k]||[],it))}
+  else if(t.coll==='record'){const inc=S.income.find(x=>x.id===t.parent);if(!inc){UI.trashMsg='Restore the income source first, then restore this record.';return}fresh(inc.records=inc.records||[],t.item)}
+  else fresh(S[t.coll]=S[t.coll]||[],t.item);
+  logEvent('restore',t.label+' restored','','');
+  S.trash=S.trash.filter(x=>x.id!==id);
+}
+function trashDaysLeft(t){return Math.max(0,Math.ceil((Date.parse(t.at)+TRASH_DAYS*864e5-Date.now())/864e5))}
+function renderDataManager(){
+  UI.sel=UI.sel||{};const n=Object.keys(UI.sel).length;
+  let h='<section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
+  let any=false;
+  for(const k of Object.keys(TRASH_COLLS)){
+    const arr=S[k]||[];if(!arr.length)continue;any=true;
+    h+='<h3>'+TRASH_COLLS[k]+'</h3><div class="chips">'+arr.map(it=>'<label class="chk"><input type="checkbox" data-act="sel:'+k+':'+it.id+'"'+(UI.sel[k+':'+it.id]?' checked':'')+'><span>'+esc(trashName(k,it))+'</span></label>').join('')+'</div>';
+  }
+  if(!any)h+='<p class="muted">Nothing to delete.</p>';
+  h+='<div class="chips"><button class="btn danger" data-act="sel-delete"'+(n?'':' disabled')+'>Delete selected ('+n+')</button></div>';
+  if(armed==='sel'&&n)h+=eraseBox('sel-confirm','You are about to delete '+n+' selected item'+(n===1?'':'s')+'. They move to Recently deleted for '+TRASH_DAYS+' days.','Delete selected');
+  h+='</section>';
+  const tr=S.trash||[];
+  h+='<section class="card"><h2>Recently deleted</h2><p class="small muted">Kept for '+TRASH_DAYS+' days, then removed for good.</p>'+(UI.trashMsg?'<div class="note bad">'+esc(UI.trashMsg)+'</div>':'');
+  if(!tr.length)h+='<p class="muted">Nothing here.</p>';
+  else h+='<div class="scroll"><table><thead><tr><th>Item</th><th>Deleted</th><th>Days left</th><th></th></tr></thead><tbody>'+tr.slice().reverse().map(t=>'<tr><td>'+esc(t.label)+'</td><td>'+esc(String(t.at).slice(0,10))+'</td><td class="num">'+trashDaysLeft(t)+'</td><td><button class="btn tiny" data-act="trash-restore:'+t.id+'">Restore</button> <button class="btn tiny danger'+(armed==='tp:'+t.id?' armed':'')+'" data-act="trash-purge:'+t.id+'">'+(armed==='tp:'+t.id?'Confirm: delete for good':'Delete for good')+'</button></td></tr>').join('')+'</tbody></table></div>';
+  return h+'</section>';
+}
+async function deleteSelected(){
+  if(!(await checkPass()))return;
+  const keys=Object.keys(UI.sel||{});
+  for(const k of keys){const [coll,id]=k.split(':');trashOne(coll,id)}
+  UI.sel={};save();render();
+}
 
 boot();
 </script>

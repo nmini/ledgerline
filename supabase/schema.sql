@@ -34,3 +34,8 @@ begin
 end $$;
 revoke all on function public.ai_take(uuid,int) from public,anon,authenticated;
 grant execute on function public.ai_take(uuid,int) to service_role;
+
+-- 30-day recovery for a deleted cloud vault: the app marks deleted_at; this job removes it for good after 30 days.
+alter table public.vaults add column if not exists deleted_at timestamptz;
+create extension if not exists pg_cron;
+select cron.schedule('ledgerline-purge-vaults','17 3 * * *',$$delete from public.vaults where deleted_at is not null and deleted_at < now() - interval '30 days'$$);
