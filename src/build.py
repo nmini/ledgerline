@@ -42,6 +42,7 @@ rep("    case 'dsec':dashSec=arg;break;","""    case 'dsec':dashSec=arg;break;
     case 'chg-pass':changePass();return;
     case 'new-rec':if(armed==='newrec'){armed=null;newRecoveryKey();return}armed='newrec';break;
     case 'del-vault':if(armed==='delvault'){armed=null;deleteVault();return}armed='delvault';break;""")
+rep("'del-goal','convert-all'","'del-goal','convert-all','new-rec','del-vault'")
 # strings
 src=re.sub(r"Advisers run on your own Claude account.*?without them\.","Advisers use a daily AI allowance and send only what you choose. Everything else works without them.",src,flags=re.S)
 src=src.replace('inside Claude','in this app').replace('Claude allowance','daily AI allowance')

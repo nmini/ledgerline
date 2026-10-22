@@ -1912,7 +1912,7 @@ document.addEventListener('click',e=>{
       try{navigator.clipboard.writeText(t.value).then(ok,fail)}catch(_){fail()}return}
     case 'restore-backup':{const t=document.getElementById('bk-in').value.trim();try{const o=JSON.parse(t);if(o&&o.v===1&&Array.isArray(o.income)&&Array.isArray(o.expenses)&&Array.isArray(o.loans)){S=normState(o);loanSel=null;document.getElementById('bk-in').value=''}else throw 0}catch(_){const m=document.getElementById('bk-msg');if(m)m.textContent='That text is not a Ledgerline backup.';return}break}
   }
-  if(!['del-loan','load-template','clear-all','del-goal','convert-all'].includes(act))disarm();
+  if(!['del-loan','load-template','clear-all','del-goal','convert-all','new-rec','del-vault'].includes(act))disarm();
   save();render();
 });
 window.addEventListener('hashchange',()=>{const t=(location.hash||'#overview').slice(1);if(TAB_IDS.indexOf(t)>=0&&t!==tab){tab=t;render()}});
