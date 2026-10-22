@@ -306,7 +306,7 @@ function renderSecurity(){
   if(UI.newRec)h+='<div class="note"><b>Your new recovery key. It replaces the old one and is shown once:</b><p class="reckey num">'+esc(UI.newRec)+'</p><button class="btn tiny" data-act="dismiss-rec">I have saved it</button></div>';
   h+='<h3>Change passphrase</h3><div class="fields"><label class="fld"><span>Current passphrase</span><input id="sec-cur" type="password" autocomplete="current-password"></label><label class="fld"><span>New passphrase</span><input id="sec-new" type="password" autocomplete="new-password"></label><label class="fld"><span>Repeat new passphrase</span><input id="sec-new2" type="password" autocomplete="new-password"></label><div class="fld"><span>&nbsp;</span><button class="btn" data-act="chg-pass">Change passphrase</button></div></div>';
   h+=UI.secMsg?'<div class="note'+(UI.secBad?' bad':'')+'">'+esc(UI.secMsg)+'</div>':'';
-  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger'+(armed==='delvault'?' armed':'')+'" data-act="del-vault">'+(armed==='delvault'?'Confirm: delete my cloud data':'Delete my cloud data')+'</button></div></section>';
+  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger" data-act="del-vault">Delete my cloud data</button></div>'+(armed==='delvault'?eraseBox('del-vault-confirm','This permanently deletes your encrypted data from the cloud and signs you out. It cannot be undone. Download a backup first if you may need it.','Delete my cloud data'):'')+'</section>';
   return h;
 }
 async function changePass(){
@@ -336,3 +336,20 @@ async function deleteVault(){
   catch(e){UI.secMsg='Could not delete. Check your connection.';UI.secBad=true;render();return}
   dirty=false;await lockApp(true);
 }
+
+function eraseBox(act,warn,label){
+  return '<div class="note bad" role="alertdialog"><b>Warning</b><p>'+esc(warn)+'</p><label class="fld"><span>Enter your passphrase to confirm</span><input id="erase-pass" type="password" autocomplete="current-password"></label>'+(UI.eraseMsg?'<p>'+esc(UI.eraseMsg)+'</p>':'')+'<div class="chips"><button class="btn danger" data-act="'+act+'">'+esc(label)+'</button><button class="btn" data-act="erase-cancel">Cancel</button></div></div>';
+}
+async function checkPass(){
+  const el=document.getElementById('erase-pass'),p=el&&el.value;
+  if(!p){UI.eraseMsg='Enter your passphrase.';render();return false}
+  try{const k=vault.kdf;await aesDec(await kdfKey(p,unb64(k.salt),k.iter),vault.wrap_pass,aad())}
+  catch(e){UI.eraseMsg='That passphrase is not right. Nothing was erased.';render();return false}
+  UI.eraseMsg='';armed=null;return true;
+}
+async function eraseAll(){
+  if(!(await checkPass()))return;
+  logEvent('erase','All data erased by the user','','');
+  S.ai={};S.income=[];S.expenses=[];S.loans=[];S.goals=[];S.example=false;loanSel=null;save();render();
+}
+async function deleteVaultConfirmed(){if(await checkPass())deleteVault()}

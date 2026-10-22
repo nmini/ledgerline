@@ -645,7 +645,7 @@ function renderSetup(){
     +'<label class="fld"><span>Backup text</span><textarea id="bk-out" readonly>'+esc(json)+'</textarea></label><div><button class="btn" data-act="copy-backup">Copy backup</button> <span class="small muted" id="bk-msg"></span></div>'
     +'<label class="fld"><span>Paste a backup to restore</span><textarea id="bk-in" data-keep="1" placeholder="Paste backup text here"></textarea></label><div><button class="btn" data-act="restore-backup">Restore</button></div></section>';
   h+=renderSecurity();
-  h+='<section class="card"><h2>Reset</h2><div class="chips"><button class="btn" data-act="load-examples">Load example figures</button><button class="btn danger'+(armed==='all'?' armed':'')+'" data-act="clear-all">'+(armed==='all'?'Confirm: erase everything':'Erase everything')+'</button></div></section>';
+  h+='<section class="card"><h2>Reset</h2><div class="chips"><button class="btn" data-act="load-examples">Load example figures</button><button class="btn danger" data-act="clear-all">Erase everything</button></div>'+(armed==='all'?eraseBox('clear-all-confirm','This permanently erases all your income, spending, loans and savings goals. It cannot be undone. Use Setup backup first if you may need them.','Erase everything'):'')+'</section>';
   return h;
 }
 
@@ -1851,7 +1851,11 @@ document.addEventListener('click',e=>{
     case 'dismiss-rec':UI.newRec=null;break;
     case 'chg-pass':changePass();return;
     case 'new-rec':if(armed==='newrec'){armed=null;newRecoveryKey();return}armed='newrec';break;
-    case 'del-vault':if(armed==='delvault'){armed=null;deleteVault();return}armed='delvault';break;
+    case 'del-vault':armed='delvault';UI.eraseMsg='';break;
+    case 'del-vault-confirm':deleteVaultConfirmed();return;
+    case 'clear-all':armed='all';UI.eraseMsg='';break;
+    case 'clear-all-confirm':eraseAll();return;
+    case 'erase-cancel':armed=null;UI.eraseMsg='';break;
     case 'stmt-start':UI.stmt={loanId:loanSel,status:'upload',fileObjs:[],err:''};userOpen.add('stmt');break;
     case 'stmt-read':readStatement();return;
     case 'stmt-stop':if(UI.stmt&&UI.stmt.ctl)UI.stmt.ctl.abort();return;
@@ -1912,7 +1916,7 @@ document.addEventListener('click',e=>{
       try{navigator.clipboard.writeText(t.value).then(ok,fail)}catch(_){fail()}return}
     case 'restore-backup':{const t=document.getElementById('bk-in').value.trim();try{const o=JSON.parse(t);if(o&&o.v===1&&Array.isArray(o.income)&&Array.isArray(o.expenses)&&Array.isArray(o.loans)){S=normState(o);loanSel=null;document.getElementById('bk-in').value=''}else throw 0}catch(_){const m=document.getElementById('bk-msg');if(m)m.textContent='That text is not a Ledgerline backup.';return}break}
   }
-  if(!['del-loan','load-template','clear-all','del-goal','convert-all','new-rec','del-vault'].includes(act))disarm();
+  if(!['del-loan','load-template','clear-all','del-goal','convert-all','new-rec','del-vault','clear-all'].includes(act))disarm();
   save();render();
 });
 window.addEventListener('hashchange',()=>{const t=(location.hash||'#overview').slice(1);if(TAB_IDS.indexOf(t)>=0&&t!==tab){tab=t;render()}});
@@ -2224,7 +2228,7 @@ function renderSecurity(){
   if(UI.newRec)h+='<div class="note"><b>Your new recovery key. It replaces the old one and is shown once:</b><p class="reckey num">'+esc(UI.newRec)+'</p><button class="btn tiny" data-act="dismiss-rec">I have saved it</button></div>';
   h+='<h3>Change passphrase</h3><div class="fields"><label class="fld"><span>Current passphrase</span><input id="sec-cur" type="password" autocomplete="current-password"></label><label class="fld"><span>New passphrase</span><input id="sec-new" type="password" autocomplete="new-password"></label><label class="fld"><span>Repeat new passphrase</span><input id="sec-new2" type="password" autocomplete="new-password"></label><div class="fld"><span>&nbsp;</span><button class="btn" data-act="chg-pass">Change passphrase</button></div></div>';
   h+=UI.secMsg?'<div class="note'+(UI.secBad?' bad':'')+'">'+esc(UI.secMsg)+'</div>':'';
-  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger'+(armed==='delvault'?' armed':'')+'" data-act="del-vault">'+(armed==='delvault'?'Confirm: delete my cloud data':'Delete my cloud data')+'</button></div></section>';
+  h+='<div class="chips"><button class="btn'+(armed==='newrec'?' armed':'')+'" data-act="new-rec">'+(armed==='newrec'?'Confirm: replace my recovery key':'Make a new recovery key')+'</button><button class="btn danger" data-act="del-vault">Delete my cloud data</button></div>'+(armed==='delvault'?eraseBox('del-vault-confirm','This permanently deletes your encrypted data from the cloud and signs you out. It cannot be undone. Download a backup first if you may need it.','Delete my cloud data'):'')+'</section>';
   return h;
 }
 async function changePass(){
@@ -2254,6 +2258,23 @@ async function deleteVault(){
   catch(e){UI.secMsg='Could not delete. Check your connection.';UI.secBad=true;render();return}
   dirty=false;await lockApp(true);
 }
+
+function eraseBox(act,warn,label){
+  return '<div class="note bad" role="alertdialog"><b>Warning</b><p>'+esc(warn)+'</p><label class="fld"><span>Enter your passphrase to confirm</span><input id="erase-pass" type="password" autocomplete="current-password"></label>'+(UI.eraseMsg?'<p>'+esc(UI.eraseMsg)+'</p>':'')+'<div class="chips"><button class="btn danger" data-act="'+act+'">'+esc(label)+'</button><button class="btn" data-act="erase-cancel">Cancel</button></div></div>';
+}
+async function checkPass(){
+  const el=document.getElementById('erase-pass'),p=el&&el.value;
+  if(!p){UI.eraseMsg='Enter your passphrase.';render();return false}
+  try{const k=vault.kdf;await aesDec(await kdfKey(p,unb64(k.salt),k.iter),vault.wrap_pass,aad())}
+  catch(e){UI.eraseMsg='That passphrase is not right. Nothing was erased.';render();return false}
+  UI.eraseMsg='';armed=null;return true;
+}
+async function eraseAll(){
+  if(!(await checkPass()))return;
+  logEvent('erase','All data erased by the user','','');
+  S.ai={};S.income=[];S.expenses=[];S.loans=[];S.goals=[];S.example=false;loanSel=null;save();render();
+}
+async function deleteVaultConfirmed(){if(await checkPass())deleteVault()}
 
 boot();
 </script>
