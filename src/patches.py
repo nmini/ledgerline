@@ -38,3 +38,10 @@ rep("    case 'dsec':dashSec=arg;break;","""    case 'dsec':dashSec=arg;break;
     case 'incr-delb':{const r=findIncRec(arg);if(r&&r.disb){r.disb.splice(+arg2,1);delete UI.ver[r.id]}break}
     case 'incr-delrec':{for(const g of ((UI.inc&&UI.inc.result&&UI.inc.result.groups)||[])){const i=g.records.findIndex(x=>x.id===arg);if(i>=0){g.records.splice(i,1);break}}break}""")
 rep("d.coll==='incl'||d.coll==='recf'){later();return}","d.coll==='incl'||d.coll==='recf'||d.coll==='incr'){later();return}",must=False)
+rep("      h+='<div class=\"row\">'+fld('What is taken off','ded',i.id,'kind',d.kind,{t:'text',opts:opts.map(k=>[k,k]),did:d.id})","      h+='<div class=\"row\">'+fld('What is taken off','ded',i.id,'kind',d.kind,{t:'text',opts:opts.map(k=>[k,k]),did:d.id})\n        +fld('Description (e.g. NBC Home Loan)','ded',i.id,'label',d.label||'',{t:'text',did:d.id,ph:d.kind==='Other deduction'?'Type a name':'Optional name'})")
+rep("dk[d.kind]=(dk[d.kind]||0)+a}));","dk[dedName(d)]=(dk[dedName(d)]||0)+a}));")
+rep("(i.deductions||[]).map(d=>esc(d.kind)+' '+(d.mode==='pct'","(i.deductions||[]).map(d=>esc(dedName(d))+' '+(d.mode==='pct'")
+rep("out.push(line([i.name,d.kind,d.mode==='pct'","out.push(line([i.name,dedName(d),d.mode==='pct'")
+rep(":(i.deductions||[]).map(d=>d.kind)})),",":(i.deductions||[]).map(d=>dedName(d))})),")
+rep("mode:'amt',value:d.amount,freq:g.freq,_k:'d:'+normKey(d.label)}","mode:'amt',value:d.amount,freq:g.freq,label:d.label,_k:'d:'+normKey(d.label)}")
+rep("const median=a=>","const dedName=d=>(d.kind==='Other deduction'&&String(d.label||'').trim())?String(d.label).trim():(String(d.label||'').trim()&&String(d.label).trim()!==d.kind?d.kind+': '+String(d.label).trim():d.kind);\nconst median=a=>")

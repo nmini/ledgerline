@@ -501,6 +501,7 @@ function renderIncome(){
     (i.deductions||[]).forEach(d=>{
       const opts=kinds.indexOf(d.kind)>=0?kinds:kinds.concat([d.kind]);
       h+='<div class="row">'+fld('What is taken off','ded',i.id,'kind',d.kind,{t:'text',opts:opts.map(k=>[k,k]),did:d.id})
+        +fld('Description (e.g. NBC Home Loan)','ded',i.id,'label',d.label||'',{t:'text',did:d.id,ph:d.kind==='Other deduction'?'Type a name':'Optional name'})
         +fld('Entered as','ded',i.id,'mode',d.mode,{t:'text',opts:[['amt','Fixed amount'],['pct','% of amount before deductions']],did:d.id})
         +fld(d.mode==='pct'?'Percent':'Amount','ded',i.id,'value',d.value,{did:d.id})
         +(d.mode==='pct'?'<div class="fld"><span>Works out to</span><b class="num">'+m2(num(i.gross)*num(d.value)/100)+'</b></div>':fld('How often','ded',i.id,'freq',d.freq||i.freq,{t:'text',opts:FREQ_OPTS,did:d.id}))
@@ -1068,7 +1069,7 @@ function renderDashIncome(){
   let h='<section class="stats">'+statT('Before deductions, per month',m0(G))+statT('Deductions, per month',m0(D))+statT('After deductions, per month',m0(N))+statT('Counted in budget, per month',m0(Cn))
     +statT('Deduction rate',pct(G>0?D/G*100:0))+statT('Income sources',String(rows.length))+statT('Largest source share',pct(share),share>70&&rows.length>1?'warn':'')+statT('Yearly after deductions',m0(N*12))+'</section>';
   const types=INCOME_TYPES.map(t=>({n:t[1],a:sumBy(rows.filter(r=>r.i.type===t[0]),r=>r.cm)})).filter(x=>x.a>0);
-  const dk={};rows.forEach(r=>(r.i.deductions||[]).filter(d=>!loanLinked(d)).forEach(d=>{const a=d.mode==='pct'?conv(num(r.i.gross)*num(d.value)/100,r.i.freq,'month'):conv(num(d.value),d.freq||r.i.freq,'month');dk[d.kind]=(dk[d.kind]||0)+a}));
+  const dk={};rows.forEach(r=>(r.i.deductions||[]).filter(d=>!loanLinked(d)).forEach(d=>{const a=d.mode==='pct'?conv(num(r.i.gross)*num(d.value)/100,r.i.freq,'month'):conv(num(d.value),d.freq||r.i.freq,'month');dk[dedName(d)]=(dk[dedName(d)]||0)+a}));
   h+='<section class="grid2"><div class="card"><h2>Counted income by type</h2><p class="small muted">Per month, after deductions and reliability</p>'+hbars(types,'--accent')+'</div><div class="card"><h2>Where deductions go</h2><p class="small muted">Per month</p>'+hbars(Object.keys(dk).map(k=>({n:k,a:dk[k]})).sort((a,b)=>b.a-a.a).slice(0,8),'--c-needs')+'</div></section>';
   h+=`<section class="card"><h2>Income portfolio</h2><div class="scroll"><table class="ledger"><thead><tr><th>Source</th><th>Type</th><th>Before</th><th>Deductions</th><th>After</th><th>Reliability</th><th>Counted</th><th>Share</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.i.name)}</td><td>${esc((INCOME_TYPES.find(t=>t[0]===r.i.type)||['',''])[1])}</td><td class="num">${m0(r.gm)}</td><td class="num">${m0(r.dm)}</td><td class="num">${m0(r.nm)}</td><td class="num">${r.rel}%</td><td class="num">${m0(r.cm)}</td><td class="num">${pct(Cn>0?r.cm/Cn*100:0)}</td></tr>`).join('')}</tbody></table></div><p class="small muted">All figures per month.</p></section>`;
   const notes=[];
@@ -1236,6 +1237,7 @@ function mapDed(label,type){
   if(/loan|advance|repay|salary sacrifice/.test(l))return pick('Salary-deducted loan repayment')||String(label).slice(0,60);
   return String(label||'Other deduction').slice(0,60);
 }
+const dedName=d=>(d.kind==='Other deduction'&&String(d.label||'').trim())?String(d.label).trim():(String(d.label||'').trim()&&String(d.label).trim()!==d.kind?d.kind+': '+String(d.label).trim():d.kind);
 const median=a=>{const b=a.slice().sort((x,y)=>x-y),n=b.length;return n?(n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2):0};
 const normKey=t=>String(t||'').toLowerCase().replace(/[0-9#*\/_.\-]+/g,' ').replace(/\s+/g,' ').trim().slice(0,30);
 function freqFromDates(ds){
@@ -1326,7 +1328,7 @@ function applyIncome(){
   const st=UI.inc;if(!st||!st.result)return;
   st.result.groups.filter(g=>g.on).forEach(g=>{
     deriveGroup(g);
-    const rows=g.deds.map(d=>({id:uid(),kind:mapDed(d.label,g.type),mode:'amt',value:d.amount,freq:g.freq,_k:'d:'+normKey(d.label)}));
+    const rows=g.deds.map(d=>({id:uid(),kind:mapDed(d.label,g.type),mode:'amt',value:d.amount,freq:g.freq,label:d.label,_k:'d:'+normKey(d.label)}));
     let inc=g.target!=='new'?S.income.find(i=>i.id===g.target):null;
     if(!inc){inc={id:uid(),name:g.name,type:g.type,gross:g.gross,freq:g.freq,rel:100,deductions:rows,records:[]};S.income.push(inc)}
     else if(g.kind==='payslip'){inc.gross=g.gross;inc.freq=g.freq;inc.type=g.type;inc.deductions=rows}
@@ -1571,7 +1573,7 @@ function reportBody(){
   }
   if(repOn('income')){
     h+='<h2>Income and deductions</h2>'+T(['Source','Type','Before deductions','Deductions','Net','How often','Reliability'],S.income.map(i=>[esc(i.name),esc((INCOME_TYPES.find(t=>t[0]===i.type)||['',''])[1]),m2(num(i.gross)),m2(incomeDeduct(i)),m2(incomeNet(i)),FREQ_LABEL[i.freq],num(i.rel??100)+'%']));
-    S.income.filter(i=>(i.deductions||[]).length).forEach(i=>{h+=`<p class="small"><b>${esc(i.name)}:</b> ${(i.deductions||[]).map(d=>esc(d.kind)+' '+(d.mode==='pct'?num(d.value)+'%':m2(num(d.value))+' '+FREQ_LABEL[d.freq||i.freq].toLowerCase())).join('; ')}</p>`});
+    S.income.filter(i=>(i.deductions||[]).length).forEach(i=>{h+=`<p class="small"><b>${esc(i.name)}:</b> ${(i.deductions||[]).map(d=>esc(dedName(d))+' '+(d.mode==='pct'?num(d.value)+'%':m2(num(d.value))+' '+FREQ_LABEL[d.freq||i.freq].toLowerCase())).join('; ')}</p>`});
   }
   if(repOn('spending'))h+=`<h2>Spending plan</h2>`+T(['Category','Type','Amount','How often','Per '+vn,'Spent this '+vn],S.expenses.map(e=>[esc(e.name),esc(e.bucket),m2(num(e.amount)),FREQ_LABEL[e.freq],m2(conv(num(e.amount),e.freq,v)),m2(num(e.spent))]));
   if(repOn('loans')&&live.length)h+='<h2>Loans</h2>'+T(['Loan','Lender','Status','Owed today','Instalment','Payoff','Real yearly cost'],live.map(x=>{const e=effectiveAPR(x.L);return [esc(x.L.name),esc(x.L.lender||''),x.sim.status,m2(x.sim.owed),m2(x.sim.A)+' '+FREQ_LABEL[x.L.freq].toLowerCase(),x.sim.payoff?dShort(x.sim.payoff):'Not reached',e==null?'n/a':pct(e)]}));
@@ -1600,7 +1602,7 @@ function csvAll(){
   out.push(line(['Income','Type','Before deductions','Deductions','Net','How often','Reliability %','Net counted per '+v]));
   S.income.forEach(i=>out.push(line([i.name,i.type,num(i.gross),round2(incomeDeduct(i)),round2(incomeNet(i)),i.freq,num(i.rel??100),round2(conv(incomeNet(i),i.freq,v)*num(i.rel??100)/100)])));
   out.push('');out.push(line(['Deduction from','Kind','Entered as','Value','How often']));
-  S.income.forEach(i=>(i.deductions||[]).forEach(d=>out.push(line([i.name,d.kind,d.mode==='pct'?'percent':'amount',num(d.value),d.mode==='pct'?'':(d.freq||i.freq)]))));
+  S.income.forEach(i=>(i.deductions||[]).forEach(d=>out.push(line([i.name,dedName(d),d.mode==='pct'?'percent':'amount',num(d.value),d.mode==='pct'?'':(d.freq||i.freq)]))));
   out.push('');out.push(line(['Spending category','Type','Amount','How often','Per '+v,'Spent this '+v]));
   S.expenses.forEach(e=>out.push(line([e.name,e.bucket,num(e.amount),e.freq,round2(conv(num(e.amount),e.freq,v)),num(e.spent)])));
   out.push('');out.push(line(['Loan','Lender','Status','Owed today','Loan balance','Penalties and fees owed','Arrears','Instalment','How often','Next due','Projected payoff','Interest paid','Interest still to pay','Real yearly cost %']));
@@ -1653,7 +1655,7 @@ function snapshot(){
   return {today:isoOf(TODAY),currency:S.settings.currency,household_size:S.settings.household,example_data:!!S.example,
     monthly:{gross_income:round2(M.gross),take_home_counted:round2(M.takeHome),loan_repayments:round2(M.loanPay),home_budget_after_loans:round2(M.home),needs:round2(M.needs),wants:round2(M.wants),savings:round2(M.savings),left_unallocated:round2(M.left)},
     targets_pct:{needs_and_loans:S.settings.needsPct,wants:S.settings.wantsPct,savings:S.settings.savePct},
-    income:S.income.map(i=>({name:i.name,type:i.type,net_monthly:round2(conv(incomeNet(i),i.freq,'month')),reliability_pct:num(i.rel??100),deductions:(i.deductions||[]).map(d=>d.kind)})),
+    income:S.income.map(i=>({name:i.name,type:i.type,net_monthly:round2(conv(incomeNet(i),i.freq,'month')),reliability_pct:num(i.rel??100),deductions:(i.deductions||[]).map(d=>dedName(d))})),
     spending:S.expenses.map(e=>({name:e.name,type:e.bucket,monthly_planned:round2(conv(num(e.amount),e.freq,'month')),spent_this_period:num(e.spent)})),
     savings_goals:(S.goals||[]).map(g=>({name:g.name,target:g.target,saved:round2(goalSaved(g)),target_date:g.date,planned:g.plan,frequency:g.freq})),
     loans:SIMS.filter(x=>x.sim).map(({L,sim})=>{const e=effectiveAPR(L);return {name:L.name,lender:L.lender,status:sim.status,amount_borrowed:L.principal,method:L.method,quoted_rate_pct:L.rate,real_yearly_cost_pct:e==null?null:round2(e),instalment:sim.A,frequency:L.freq,instalments:L.term,start:L.start,owed_today:round2(sim.owed),loan_balance:round2(sim.snap.P+sim.snap.I),penalties_and_fees_owed:round2(sim.snap.F),arrears:round2(sim.snap.arrears),days_overdue:sim.snap.daysOver,next_due:sim.nextDue?isoOf(sim.nextDue):null,projected_payoff:sim.payoff?isoOf(sim.payoff):null,interest_paid:round2(sim.intPaid),interest_remaining:round2(Math.max(0,sim.intFinal-sim.intPaid)),late_fees_charged:round2(sim.snap.feeAssessed),default_penalty_accrued:round2(sim.snap.defAccrued),upfront_fee:L.upfrontFee,late_fee_fixed:L.lateFixed,late_fee_pct_of_instalment:L.latePct,grace_days:L.grace,default_after_days:L.defaultDays,default_penalty_rate_pct:L.defaultRate,early_settlement_fee_pct:L.earlyPct,contract_flags:(L.contract&&L.contract.flags?L.contract.flags.map(f=>f.text):[])}})};
