@@ -514,3 +514,26 @@ function renderIncReview(st){
   if(R.singles.length)h+='<p class="small muted">Single deposits not added: '+R.singles.slice(0,6).map(c=>esc(c.description)+' '+m2(c.amount)).join(', ')+(R.singles.length>6?' and '+(R.singles.length-6)+' more':'')+'.</p>';
   return h+verMsgHtml()+'<div class="chips"><button class="btn primary" data-act="inc-apply">Apply</button><button class="btn" data-act="inc-cancel">Discard</button></div></section>';
 }
+
+/* ---------- deductions shown as a sub-table under each income ---------- */
+function renderDeds(i,kinds,per,net,ded){
+  const g=num(i.gross),eq=d=>d.mode==='pct'?g*num(d.value)/100:conv(num(d.value),d.freq||i.freq,i.freq);
+  let h='<div class="deds subtable"><div class="card-head"><h3>Deductions from '+esc(i.name||'this income')+'</h3><span class="small muted">'+esc(DED_HINT[i.type]||DED_HINT.other)+'</span></div>';
+  const ds=i.deductions||[];
+  if(!ds.length)h+='<p class="small muted">No deductions yet. Add one below.</p>';
+  else{
+    h+='<div class="scroll"><table class="ledger subt"><thead><tr><th>Description</th><th>Type</th><th>Entered as</th><th>Amount or %</th><th>How often</th><th class="num">Per '+per+'</th><th></th></tr></thead><tbody>';
+    ds.forEach(d=>{
+      const opts=kinds.indexOf(d.kind)>=0?kinds:kinds.concat([d.kind]),ln=loanLinked(d)?S.loans.find(l=>l.id===d.loanId):null;
+      h+='<tr><td>'+fld('Description','ded',i.id,'label',d.label||'',{t:'text',did:d.id,ph:d.kind==='Other deduction'?'Type a name':'Optional name'})+'</td>'
+        +'<td>'+fld('Type','ded',i.id,'kind',d.kind,{t:'text',opts:opts.map(k=>[k,k]),did:d.id})+'</td>'
+        +'<td>'+fld('Entered as','ded',i.id,'mode',d.mode,{t:'text',opts:[['amt','Fixed amount'],['pct','% of gross']],did:d.id})+'</td>'
+        +'<td>'+fld(d.mode==='pct'?'Percent':'Amount','ded',i.id,'value',d.value,{did:d.id})+'</td>'
+        +'<td>'+(d.mode==='pct'?'<span class="muted">of gross</span>':fld('How often','ded',i.id,'freq',d.freq||i.freq,{t:'text',opts:FREQ_OPTS,did:d.id}))+'</td>'
+        +'<td class="num">'+m2(eq(d))+(ln?'<br><small class="muted">In Loans: '+esc(ln.name)+'</small>':'')+'</td>'
+        +'<td><button class="btn tiny danger" data-act="del-ded:'+i.id+':'+d.id+'">Remove</button></td></tr>';
+    });
+    h+='</tbody><tfoot><tr><th colspan="5">Total deductions per '+per+(ds.some(loanLinked)?' (loan repayments are counted in Loans)':'')+'</th><th class="num">'+m2(ded)+'</th><th></th></tr><tr><th colspan="5">Net per '+per+'</th><th class="num">'+m2(net)+'</th><th></th></tr></tfoot></table></div>';
+  }
+  return h+'<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div></div>';
+}

@@ -45,3 +45,7 @@ rep("out.push(line([i.name,d.kind,d.mode==='pct'","out.push(line([i.name,dedName
 rep(":(i.deductions||[]).map(d=>d.kind)})),",":(i.deductions||[]).map(d=>dedName(d))})),")
 rep("mode:'amt',value:d.amount,freq:g.freq,_k:'d:'+normKey(d.label)}","mode:'amt',value:d.amount,freq:g.freq,label:d.label,_k:'d:'+normKey(d.label)}")
 rep("const median=a=>","const dedName=d=>(d.kind==='Other deduction'&&String(d.label||'').trim())?String(d.label).trim():(String(d.label||'').trim()&&String(d.label).trim()!==d.kind?d.kind+': '+String(d.label).trim():d.kind);\nconst median=a=>")
+_s=src.index("    h+='<div class=\"deds\">")
+_e=src.index("+recordsHtml(i)+'</div>';",_s)+len("+recordsHtml(i)+'</div>';")
+src=src[:_s]+"    h+=renderDeds(i,kinds,per,net,ded)+recordsHtml(i)+'</div>';"+src[_e:]
+rep("</style>",".subtable{margin-top:12px;border-top:1px solid var(--line,#ddd);padding-top:8px}.subt{min-width:720px}.subt td,.subt th{padding:4px 6px;vertical-align:middle}.subt .fld{margin:0}.subt .fld>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}.subt input,.subt select{width:100%;min-width:90px}.subt tfoot th{text-align:left}\n</style>")
