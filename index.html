@@ -326,7 +326,7 @@ function sample(){
 function normState(o){
   o.settings=o.settings||{};o.ai=o.ai||{};if(!Array.isArray(o.log))o.log=[];if(!Array.isArray(o.goals))o.goals=[];if(!Array.isArray(o.trash))o.trash=[];
   (o.income||[]).forEach(i=>{
-    if(['salary','property','business','other'].indexOf(i.type)<0)i.type='salary';
+    if(['salary','allowance','property','business','investment','other'].indexOf(i.type)<0)i.type='salary';
     if(!PY[i.freq])i.freq=normFreq(i.freq)||'month';
     i.gross=num(i.gross);if(i.rel==null||!Number.isFinite(+i.rel))i.rel=100;
     if(!Array.isArray(i.records))i.records=[];
@@ -360,14 +360,16 @@ const pct=n=>(Math.round(n*10)/10)+'%';
 let SIMS=[];
 function buildSims(){SIMS=S.loans.map(L=>({L,sim:simulate(L,TODAY,true)}))}
 function conv(a,fr,view){return a*PY[fr]/PY[view]}
-const INCOME_TYPES=[['salary','Salary or wages'],['property','Property or rental income'],['business','Business or self-employment'],['other','Other (allowance, support, investments)']];
+const INCOME_TYPES=[['salary','Salary or wages'],['allowance','Allowances and benefits'],['property','Property or rental income'],['business','Business or self-employment'],['investment','Interest, dividends or royalties'],['other','Other (support, gifts, other)']];
 const DED_KINDS={
-  salary:['Income tax (PAYE)','Pension or superannuation','Health insurance','Union or professional fees','Salary-deducted loan repayment','Other deduction'],
+  salary:['Income tax (PAYE)','Pension or superannuation','Health insurance','Union or professional fees','Salary-deducted loan repayment','Staff savings or credit union','Housing or rent recovery','Other deduction'],
+  allowance:['Income tax (PAYE)','Other deduction'],
+  investment:['Withholding tax (interest or dividends)','Bank or management fees','Other deduction'],
   property:['Property management fees','Repairs and maintenance','Rates, land tax or levies','Property insurance','Vacancy allowance','Income tax on rent','Other deduction'],
   business:['Business running costs','Income tax','Superannuation or contributions','Other deduction'],
   other:['Tax','Other deduction']
 };
-const DED_HINT={salary:'If a loan is repaid straight from your pay, record it here or in Loans, not both.',property:'If the property mortgage is in Loans, leave its interest out here.',business:'Enter costs that come out before you can spend the money.',other:'Enter anything taken off before the money reaches you.'};
+const DED_HINT={allowance:'Cash allowances are usually taxed with your pay. Enter any tax taken off.',investment:'Interest and dividends often have tax withheld before you receive them. Enter what is taken off.',salary:'If a loan is repaid straight from your pay, record it here or in Loans, not both.',property:'If the property mortgage is in Loans, leave its interest out here.',business:'Enter costs that come out before you can spend the money.',other:'Enter anything taken off before the money reaches you.'};
 const loanLinked=d=>!!(d.loanId&&S.loans.some(l=>l.id===d.loanId));
 function incomeDeduct(i){
   const g=num(i.gross);
@@ -1220,6 +1222,9 @@ function mapDed(label,type){
   const l=String(label||'').toLowerCase(),k=DED_KINDS[type]||DED_KINDS.other;
   const pick=x=>k.indexOf(x)>=0?x:null;
   if(/tax|paye|withhold|wht/.test(l))return pick('Income tax (PAYE)')||pick('Income tax')||pick('Income tax on rent')||pick('Tax')||String(label).slice(0,60);
+  if(/credit union|co-?op|savings (club|scheme|society)/.test(l))return pick('Staff savings or credit union')||String(label).slice(0,60);
+  if(/housing|rent recovery|quarters/.test(l))return pick('Housing or rent recovery')||String(label).slice(0,60);
+  if(/withholding|dividend|interest/.test(l)&&pick('Withholding tax (interest or dividends)'))return 'Withholding tax (interest or dividends)';
   if(/pension|super|nasfund|retire|provident|kiwisaver|401|fund/.test(l))return pick('Pension or superannuation')||pick('Superannuation or contributions')||String(label).slice(0,60);
   if(/health|medical|insur/.test(l))return pick('Health insurance')||pick('Property insurance')||String(label).slice(0,60);
   if(/union|professional/.test(l))return pick('Union or professional fees')||String(label).slice(0,60);
@@ -1237,7 +1242,7 @@ function freqFromDates(ds){
 function buildIncomeGroups(kind,outs){
   const groups=[],singles=[],flags=[],fs=new Set();
   outs.forEach(o=>(Array.isArray(o&&o.flags)?o.flags:[]).forEach(x=>{if(x&&typeof x.text==='string'&&!fs.has(x.text)){fs.add(x.text);flags.push({severity:['high','medium','low'].indexOf(x.severity)>=0?x.severity:'low',text:x.text.slice(0,300)})}}));
-  const types=['salary','property','business','other'];
+  const types=['salary','allowance','property','business','investment','other'];
   if(kind==='payslip'){
     const by={};
     outs.forEach(o=>(Array.isArray(o&&o.payslips)?o.payslips:[]).forEach(p=>{if(!p||typeof p.gross!=='number')return;const k=normKey(p.source)||'payslip';(by[k]=by[k]||[]).push(p)}));
@@ -1853,6 +1858,7 @@ document.addEventListener('click',e=>{
     case 'cancel-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();UI.intake=null;break;
     case 'stop-intake':if(UI.intake&&UI.intake.ctl)UI.intake.ctl.abort();return;
     case 'dsec':dashSec=arg;break;
+    case 'add-png':addPngStd(arg);break;
     case 'ver':UI.ver[arg]=!UI.ver[arg];UI.verMsg='';break;
     case 'incr-addd':{const r=findIncRec(arg);if(r){(r.deds=r.deds||[]).push({label:'',amount:0});delete UI.ver[r.id]}break}
     case 'incr-deld':{const r=findIncRec(arg);if(r&&r.deds){r.deds.splice(+arg2,1);delete UI.ver[r.id]}break}
@@ -2477,7 +2483,23 @@ function renderDeds(i,kinds,per,net,ded){
     });
     h+='</tbody><tfoot><tr><th colspan="5">Total deductions per '+per+(ds.some(loanLinked)?' (loan repayments are counted in Loans)':'')+'</th><th class="num">'+m2(ded)+'</th><th></th></tr><tr><th colspan="5">Net per '+per+'</th><th class="num">'+m2(net)+'</th><th></th></tr></tfoot></table></div>';
   }
-  return h+'<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div></div>';
+  const png=(S.settings.currency==='PGK'&&i.type==='salary')?'<div class="chips"><button class="btn tiny" data-act="add-png:'+i.id+'">Add standard PNG deductions</button></div><p class="small muted">Adds an estimate of salary and wages tax for a PNG resident (bands from PwC, reviewed Sept 2026, no dependants rebate) and 6% employee superannuation. Compare with your payslip and edit the figures.</p>':'';
+  return h+png+'<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div></div>';
+}
+
+/* ---------- Papua New Guinea standard deductions (estimates) ---------- */
+function pngTax(annual){
+  const B=[[20000,0],[33000,.30],[70000,.35],[250000,.40],[Infinity,.42]];let t=0,lo=0;
+  for(const [hi,r] of B){if(annual>lo)t+=(Math.min(annual,hi)-lo)*r;lo=hi}
+  return t;
+}
+function addPngStd(id){
+  const i=S.income.find(x=>x.id===id);if(!i)return;
+  const ds=i.deductions=i.deductions||[],has=k=>ds.some(d=>d.kind===k);
+  const annual=conv(num(i.gross),i.freq,'year');
+  if(!has('Income tax (PAYE)'))ds.push({id:uid(),kind:'Income tax (PAYE)',label:'Salary and wages tax (estimate)',mode:'amt',value:round2(conv(pngTax(annual),'year',i.freq)),freq:i.freq});
+  if(!has('Pension or superannuation'))ds.push({id:uid(),kind:'Pension or superannuation',label:'Superannuation, employee 6%',mode:'pct',value:6,freq:i.freq});
+  logEvent('add',i.name+': standard PNG deductions','','');
 }
 
 boot();

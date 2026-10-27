@@ -535,5 +535,21 @@ function renderDeds(i,kinds,per,net,ded){
     });
     h+='</tbody><tfoot><tr><th colspan="5">Total deductions per '+per+(ds.some(loanLinked)?' (loan repayments are counted in Loans)':'')+'</th><th class="num">'+m2(ded)+'</th><th></th></tr><tr><th colspan="5">Net per '+per+'</th><th class="num">'+m2(net)+'</th><th></th></tr></tfoot></table></div>';
   }
-  return h+'<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div></div>';
+  const png=(S.settings.currency==='PGK'&&i.type==='salary')?'<div class="chips"><button class="btn tiny" data-act="add-png:'+i.id+'">Add standard PNG deductions</button></div><p class="small muted">Adds an estimate of salary and wages tax for a PNG resident (bands from PwC, reviewed Sept 2026, no dependants rebate) and 6% employee superannuation. Compare with your payslip and edit the figures.</p>':'';
+  return h+png+'<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div></div>';
+}
+
+/* ---------- Papua New Guinea standard deductions (estimates) ---------- */
+function pngTax(annual){
+  const B=[[20000,0],[33000,.30],[70000,.35],[250000,.40],[Infinity,.42]];let t=0,lo=0;
+  for(const [hi,r] of B){if(annual>lo)t+=(Math.min(annual,hi)-lo)*r;lo=hi}
+  return t;
+}
+function addPngStd(id){
+  const i=S.income.find(x=>x.id===id);if(!i)return;
+  const ds=i.deductions=i.deductions||[],has=k=>ds.some(d=>d.kind===k);
+  const annual=conv(num(i.gross),i.freq,'year');
+  if(!has('Income tax (PAYE)'))ds.push({id:uid(),kind:'Income tax (PAYE)',label:'Salary and wages tax (estimate)',mode:'amt',value:round2(conv(pngTax(annual),'year',i.freq)),freq:i.freq});
+  if(!has('Pension or superannuation'))ds.push({id:uid(),kind:'Pension or superannuation',label:'Superannuation, employee 6%',mode:'pct',value:6,freq:i.freq});
+  logEvent('add',i.name+': standard PNG deductions','','');
 }
