@@ -385,6 +385,9 @@ function restoreTrash(id){
 }
 function trashDaysLeft(t){return Math.max(0,Math.ceil((Date.parse(t.at)+TRASH_DAYS*864e5-Date.now())/864e5))}
 function renderDataManager(){
+  return renderRegion()+renderDataManager2();
+}
+function renderDataManager2(){
   UI.sel=UI.sel||{};const n=Object.keys(UI.sel).length;
   let h='<section class="card"><h2>Upload checks</h2><p class="small muted">Figures read from contracts, statements and payslips are never saved until you have checked them. Each one can be edited first.</p><div class="fields">'+fld('Require a Checked tick before applying','settings','x','verify',verOn()?'yes':'no',{opts:[['yes','Yes (recommended)'],['no','No']]})+'</div></section><section class="card"><h2>Delete selected data</h2><p class="small muted">Tick the items to remove. Deleted items are kept for '+TRASH_DAYS+' days in Recently deleted, where you can restore them.</p>';
   let any=false;
@@ -535,21 +538,61 @@ function renderDeds(i,kinds,per,net,ded){
     });
     h+='</tbody><tfoot><tr><th colspan="5">Total deductions per '+per+(ds.some(loanLinked)?' (loan repayments are counted in Loans)':'')+'</th><th class="num">'+m2(ded)+'</th><th></th></tr><tr><th colspan="5">Net per '+per+'</th><th class="num">'+m2(net)+'</th><th></th></tr></tfoot></table></div>';
   }
-  const png=(S.settings.currency==='PGK'&&i.type==='salary')?'<div class="chips"><button class="btn tiny" data-act="add-png:'+i.id+'">Add standard PNG deductions</button></div><p class="small muted">Adds an estimate of salary and wages tax for a PNG resident (bands from PwC, reviewed Sept 2026, no dependants rebate) and 6% employee superannuation. Compare with your payslip and edit the figures.</p>':'';
+  const cf=taxCfg(),png=(i.type==='salary'&&cf&&(cf.bands.length||num(cf.fundRate)>0))?'<div class="chips"><button class="btn tiny" data-act="add-png:'+i.id+'">Add standard deductions</button></div><p class="small muted">Adds an estimated income tax and the employee contribution, using your Country and tax settings in Setup. Compare with your payslip and edit the figures.</p>':(i.type==='salary'?'<p class="small muted">Tip: set your country and tax bands in Setup to add standard deductions in one click.</p>':'');
   return h+png+'<div class="chips">'+kinds.map((k,ki)=>'<button class="chip" data-act="add-ded:'+i.id+':'+ki+'">+ '+esc(k)+'</button>').join('')+'</div></div>';
 }
 
-/* ---------- Papua New Guinea standard deductions (estimates) ---------- */
-function pngTax(annual){
-  const B=[[20000,0],[33000,.30],[70000,.35],[250000,.40],[Infinity,.42]];let t=0,lo=0;
-  for(const [hi,r] of B){if(annual>lo)t+=(Math.min(annual,hi)-lo)*r;lo=hi}
+/* ---------- country profiles and standard deductions (estimates; user-editable) ---------- */
+const PNG_BANDS=[{from:0,rate:0},{from:20000,rate:30},{from:33000,rate:35},{from:70000,rate:40},{from:250000,rate:42}];
+const COUNTRIES={
+  PNG:{n:'Papua New Guinea',cur:'PGK',taxLabel:'Salary and wages tax',fundName:'Superannuation (Nasfund or Nambawan)',fundRate:6,bands:PNG_BANDS,note:'Resident bands from PwC (reviewed Sept 2026); employee super 6% of base salary. No dependants rebate.'},
+  FJ:{n:'Fiji',cur:'FJD',taxLabel:'PAYE',fundName:'FNPF (provident fund)'},
+  SB:{n:'Solomon Islands',cur:'SBD',taxLabel:'PAYE',fundName:'National Provident Fund (NPF)'},
+  VU:{n:'Vanuatu',cur:'VUV',taxLabel:'Income tax (if any)',fundName:'VNPF (provident fund)'},
+  WS:{n:'Samoa',cur:'WST',taxLabel:'PAYE',fundName:'National Provident Fund (NPF)'},
+  TO:{n:'Tonga',cur:'TOP',taxLabel:'Income tax',fundName:'Retirement Fund'},
+  AU:{n:'Australia',cur:'AUD',taxLabel:'PAYG withholding',fundName:'Superannuation (employee contribution)'},
+  NZ:{n:'New Zealand',cur:'NZD',taxLabel:'PAYE',fundName:'KiwiSaver'},
+  SG:{n:'Singapore',cur:'SGD',taxLabel:'Income tax',fundName:'CPF (employee share)'},
+  PH:{n:'Philippines',cur:'PHP',taxLabel:'Withholding tax',fundName:'SSS, PhilHealth and Pag-IBIG'},
+  MY:{n:'Malaysia',cur:'MYR',taxLabel:'PCB (monthly tax deduction)',fundName:'EPF (KWSP)'},
+  ID:{n:'Indonesia',cur:'IDR',taxLabel:'PPh 21',fundName:'BPJS and pension'},
+  XX:{n:'Other country',cur:'',taxLabel:'Income tax',fundName:'Pension or provident fund'}
+};
+function taxCfg(){
+  const t=S.settings.tax;if(t)return t;
+  if(S.settings.currency==='PGK'){const p=COUNTRIES.PNG;return {country:'PNG',taxLabel:p.taxLabel,fundName:p.fundName,fundRate:p.fundRate,bands:p.bands.map(x=>Object.assign({},x))}}
+  return null;
+}
+function ensureTax(){if(!S.settings.tax){const t=taxCfg();S.settings.tax=t||{country:'XX',taxLabel:'Income tax',fundName:'Pension or provident fund',fundRate:0,bands:[]}}const t=S.settings.tax;if(!Array.isArray(t.bands))t.bands=[];return t}
+function applyCountry(id){
+  const p=COUNTRIES[id]||COUNTRIES.XX;
+  S.settings.country=id;
+  S.settings.tax={country:id,taxLabel:p.taxLabel,fundName:p.fundName,fundRate:p.fundRate||0,bands:(p.bands||[]).map(x=>Object.assign({},x))};
+  logEvent('setup','Country set to '+p.n,'','');
+}
+function bandTax(annual,bands){
+  const B=(bands||[]).map(b=>({from:num(b.from),rate:num(b.rate)/100})).sort((x,y)=>x.from-y.from);let t=0;
+  for(let k=0;k<B.length;k++){const hi=k+1<B.length?B[k+1].from:Infinity;if(annual>B[k].from)t+=(Math.min(annual,hi)-B[k].from)*B[k].rate}
   return t;
 }
-function addPngStd(id){
-  const i=S.income.find(x=>x.id===id);if(!i)return;
-  const ds=i.deductions=i.deductions||[],has=k=>ds.some(d=>d.kind===k);
-  const annual=conv(num(i.gross),i.freq,'year');
-  if(!has('Income tax (PAYE)'))ds.push({id:uid(),kind:'Income tax (PAYE)',label:'Salary and wages tax (estimate)',mode:'amt',value:round2(conv(pngTax(annual),'year',i.freq)),freq:i.freq});
-  if(!has('Pension or superannuation'))ds.push({id:uid(),kind:'Pension or superannuation',label:'Superannuation, employee 6%',mode:'pct',value:6,freq:i.freq});
-  logEvent('add',i.name+': standard PNG deductions','','');
+function addStdDeds(id){
+  const i=S.income.find(x=>x.id===id),cfg=taxCfg();if(!i||!cfg)return;
+  const ds=i.deductions=i.deductions||[],has=k=>ds.some(d=>d.kind===k),annual=conv(num(i.gross),i.freq,'year');
+  if(cfg.bands.length&&!has('Income tax (PAYE)'))ds.push({id:uid(),kind:'Income tax (PAYE)',label:(cfg.taxLabel||'Income tax')+' (estimate)',mode:'amt',value:round2(conv(bandTax(annual,cfg.bands),'year',i.freq)),freq:i.freq});
+  if(num(cfg.fundRate)>0&&!has('Pension or superannuation'))ds.push({id:uid(),kind:'Pension or superannuation',label:(cfg.fundName||'Pension')+', employee '+num(cfg.fundRate)+'%',mode:'pct',value:num(cfg.fundRate),freq:i.freq});
+  logEvent('add',i.name+': standard deductions','','');
+}
+function renderRegion(){
+  const cfg=taxCfg(),id=(cfg&&cfg.country)||S.settings.country||'XX',p=COUNTRIES[id]||COUNTRIES.XX;
+  let h='<section class="card"><h2>Country and tax settings</h2><p class="small muted">Used by the <b>Add standard deductions</b> button on a salary income. Choose your country for starter names, then enter your tax bands and contribution rate from your tax authority. Everything here can be edited. Figures are estimates, so compare them with a payslip.</p><div class="fields">'
+    +fld('Country or region','settings','x','country',id,{opts:Object.keys(COUNTRIES).map(k=>[k,COUNTRIES[k].n])})+'</div>';
+  if(p.cur)h+='<p class="small muted">Usual currency: '+esc(p.cur)+'. Choosing a country resets the tax settings below to its starter values. Currency is set in Setup above.</p>';
+  if(p.note)h+='<p class="small muted">'+esc(p.note)+'</p>';
+  if(!cfg){h+='<p class="small">Pick a country to begin.</p></section>';return h}
+  h+='<div class="fields">'+fld('Name of the income tax','taxs','x','taxLabel',cfg.taxLabel||'',{t:'text'})+fld('Name of the pension or provident fund','taxs','x','fundName',cfg.fundName||'',{t:'text'})+fld('Employee contribution %','taxs','x','fundRate',num(cfg.fundRate))+'</div>';
+  h+='<h3>Income tax bands (per year)</h3>'+((cfg.bands||[]).length?'':'<p class="small muted">No bands yet. Add the first band starting at 0.</p>');
+  (cfg.bands||[]).forEach((b,k)=>{h+='<div class="row">'+fld('Income above','taxb','x','from',num(b.from),{did:String(k)})+fld('Tax rate %','taxb','x','rate',num(b.rate),{did:String(k)})+'<div class="fld"><span>&nbsp;</span><button class="btn tiny danger" data-act="tax-delband:'+k+'">Remove</button></div></div>'});
+  h+='<div class="chips"><button class="btn tiny" data-act="tax-addband">Add a band</button></div></section>';
+  return h;
 }
